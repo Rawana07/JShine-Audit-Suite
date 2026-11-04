@@ -1,0 +1,8 @@
+{
+  "name": "JaySoftShine – Audit & Operations ERP",
+  "description": "Enterprise ERP for audit outsourcing, physical verification, stock audits, vendor outsourcing, auditor allocation, billing, payables, and project profitability.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

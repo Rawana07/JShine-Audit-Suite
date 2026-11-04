@@ -1,0 +1,1510 @@
+# MASTER PROMPT: BUILD COMPLETE JAYSOFTSHINE AUDIT & OPERATIONS ERP
+
+Act as a senior SaaS product architect, UI/UX designer, full-stack Next.js engineer, PostgreSQL database architect, accounting software developer, and security engineer.
+
+Design and develop a complete, production-oriented ERP web application named:
+
+**JAYSOFTSHINE – AUDIT & OPERATIONS ERP**
+
+Tagline: One Platform. Complete Business Control.
+
+This is not a generic project management dashboard. It is a specialized business ERP for an audit outsourcing, physical verification, stock audit, inventory verification, asset tagging, compliance audit, insurance survey and manpower outsourcing company.
+
+The application must manage the complete business lifecycle, starting from receiving projects from MNCs, Big Four firms and CA firms, allocating work to individual auditors or outsourcing to vendors, monitoring field execution, managing attendance and mandays, raising client invoices, settling vendor and auditor payments, and calculating project-wise profitability.
+
+IMPORTANT:
+Build the complete application with functional navigation, forms, database integration, authentication, role-based access, realistic workflows, and responsive interfaces. Do not create a static-only UI prototype. Do not use non-functional buttons or hardcoded dashboard figures in the connected production application.
+
+---
+
+# 1. FIXED BUSINESS AND TECHNOLOGY CONFIGURATION
+
+Business name: JaySoftShine
+
+Product: JaySoftShine Audit & Operations ERP
+
+Organization structure: Single organization – JaySoftShine.
+
+Currency: INR (Indian Rupees).
+
+Financial year: 1 April to 31 March.
+
+Country: India.
+
+Timezone: Asia/Kolkata.
+
+Date format: DD-MM-YYYY.
+
+Number format: Indian numbering system.
+
+Theme: Modern Black + White.
+
+Design direction:
+- Premium corporate SaaS interface.
+- Black primary navigation and action buttons.
+- White workspace.
+- Light grey backgrounds.
+- Subtle borders and shadows.
+- Minimalist typography.
+- Professional financial dashboards.
+- Clean data tables.
+- Responsive desktop, tablet and mobile design.
+- Avoid excessive gradients and colorful cards.
+
+Technology:
+- Next.js App Router.
+- TypeScript.
+- React.
+- Tailwind CSS.
+- shadcn/ui.
+- Lucide icons.
+- Supabase PostgreSQL.
+- Supabase Authentication.
+- Supabase Storage.
+- PostgreSQL Row Level Security.
+- Vercel deployment.
+- React Hook Form and Zod validation.
+- Recharts for analytics.
+- Excel import/export.
+- PDF document generation.
+
+Use the latest stable compatible versions of these technologies.
+
+Use server components wherever appropriate. Use client components only where interaction requires them.
+
+---
+
+# 2. BUSINESS MODEL – MUST SUPPORT ALL THREE SCENARIOS
+
+The entire application must be designed around three execution models.
+
+SCENARIO A – DIRECT AUDITOR ASSIGNMENT
+
+Example:
+
+JaySoftShine receives a Physical Verification project from an MNC.
+
+Client rate: ₹1,500 per manday.
+
+Auditor rate: ₹1,000 per manday.
+
+Margin: ₹500 per manday.
+
+The project has 2 locations and 2 individual auditors.
+
+The administrator creates a project, adds two locations and directly allocates one auditor to each location.
+
+The system must calculate:
+- Client billing.
+- Auditor payable.
+- Actual approved mandays.
+- Gross margin.
+- Other expenses.
+- Net project profit.
+
+SCENARIO B – COMPLETE VENDOR OUTSOURCING
+
+Example:
+
+JaySoftShine receives a 100-location assignment.
+
+Client rate: ₹1,500 per manday.
+
+Vendor rate: ₹1,200 per manday.
+
+Vendor manages all 100 locations and may allocate its own auditors or sub-vendors.
+
+JaySoftShine monitors progress, attendance, reports, billing, vendor bills, payment and project profitability.
+
+SCENARIO C – HYBRID EXECUTION
+
+Example:
+
+100 locations:
+- 20 locations directly allocated to individual auditors.
+- 80 locations allocated to Vendor XYZ.
+
+Both execution types must exist under one parent project.
+
+The system must support multiple vendors, sub-vendors, individual auditors and different commercial rates in the same project.
+
+CRITICAL BUSINESS RULE:
+The client billing rate, vendor rate and auditor rate must be independently maintained. External users must never see JaySoftShine's client rates, overall business margin or another vendor's commercial information.
+
+---
+
+# 3. MAIN APPLICATION MODULES
+
+Create a professional left sidebar with the following navigation.
+
+1. Dashboard
+2. CRM & Clients
+3. Projects
+4. Locations
+5. Assignments
+6. Workforce / Auditors
+7. Vendor Management
+8. Attendance & Mandays
+9. Field Operations
+10. Documents & Reports
+11. Client Billing
+12. Vendor Payables
+13. Auditor Payables
+14. Expenses
+15. Accounting
+16. GST & TDS
+17. MIS & Analytics
+18. Notifications
+19. User Management
+20. Settings
+
+Use collapsible navigation groups where appropriate.
+
+---
+
+# 4. DASHBOARD
+
+Create a premium management dashboard.
+
+Display database-driven KPIs:
+
+- Total active projects.
+- Total completed projects.
+- Total locations.
+- Completed locations.
+- Pending locations.
+- Active vendors.
+- Active auditors.
+- Total client invoices.
+- Client payments received.
+- Client outstanding.
+- Vendor payable.
+- Auditor payable.
+- Total project revenue.
+- Total direct project cost.
+- Gross margin.
+- Net project profit.
+
+Add charts:
+
+1. Monthly revenue vs expenses.
+2. Monthly profit trend.
+3. Project execution progress.
+4. Client-wise revenue.
+5. Vendor-wise project distribution.
+6. State-wise project distribution.
+7. Direct vs outsourced work distribution.
+8. Receivables vs payables.
+
+Add dashboard sections:
+- Recent projects.
+- Upcoming deadlines.
+- Pending assignments.
+- Attendance approval requests.
+- Reports pending verification.
+- Overdue client invoices.
+- Vendor payments due.
+- Auditor payments due.
+- Recent financial transactions.
+
+Create role-specific dashboards.
+
+ADMIN: Full business visibility.
+
+OFFICE: Operational tasks and project execution.
+
+ACCOUNTS: Financial dashboard, invoices, payments, journals and outstanding.
+
+PROJECT MANAGER: Assigned projects and locations.
+
+VENDOR: Only their own projects, assignments, locations, manpower and settlements.
+
+AUDITOR: Own assignments, attendance, reports and payment history.
+
+CLIENT: Their own project progress, reports and permitted invoices.
+
+Never display fabricated figures as real business data. Empty databases should show zero values and meaningful onboarding prompts.
+
+---
+
+# 5. CLIENT / CRM MANAGEMENT
+
+Create a complete client management module.
+
+Client types:
+- MNC.
+- Big Four Firm.
+- CA Firm.
+- Corporate.
+- Manufacturing.
+- Retail.
+- Pharmaceutical.
+- Financial Institution.
+- Other.
+
+Client master fields:
+- Client ID (automatic).
+- Client name.
+- Client type.
+- PAN.
+- GSTIN.
+- Registered address.
+- Billing address.
+- State.
+- City.
+- PIN code.
+- Contact person.
+- Mobile.
+- Email.
+- Payment terms.
+- Default GST configuration.
+- TDS configuration.
+- Credit limit.
+- Active/inactive status.
+- Documents and agreements.
+
+Features:
+- Add/edit/view/deactivate client.
+- Multiple contact persons.
+- Multiple billing addresses.
+- Client-specific rate cards.
+- Project history.
+- Client ledger.
+- Invoice history.
+- Payment history.
+- Outstanding statement.
+- Client notes.
+- Document attachments.
+
+---
+
+# 6. PROJECT MANAGEMENT
+
+Every project must have a unique automatic Project ID.
+
+Example: JSS-2026-0001.
+
+Project categories:
+- Physical Verification.
+- Stock Audit.
+- Inventory Verification.
+- Fixed Asset Verification.
+- Asset Tagging.
+- Internal Audit.
+- Compliance Audit.
+- Mystery Audit.
+- Insurance Survey.
+- Loss Assessment.
+- Quality Audit.
+- Other.
+
+Project fields:
+- Project ID.
+- Project name.
+- Client.
+- Client PO / Work Order number.
+- Project type.
+- Project manager.
+- Start date.
+- End date.
+- Total locations.
+- Estimated mandays.
+- Execution model: Direct / Vendor / Hybrid.
+- Client rate.
+- Billing type.
+- GST treatment.
+- Payment terms.
+- Project budget.
+- Project instructions.
+- Supporting documents.
+- Status.
+
+Project statuses:
+Draft, Active, On Hold, Completed, Cancelled.
+
+Every project detail page must contain tabs:
+
+- Overview.
+- Locations.
+- Assignments.
+- Team.
+- Vendors.
+- Attendance.
+- Reports.
+- Documents.
+- Client Billing.
+- Vendor Payables.
+- Auditor Payables.
+- Expenses.
+- Accounting.
+- Profitability.
+- Activity History.
+
+Allow multiple invoices, vendors, auditors and payments under the same project.
+
+---
+
+# 7. LOCATION MANAGEMENT
+
+Every project can have unlimited locations.
+
+Generate unique Location IDs.
+
+Example: JSS-2026-0001-L001.
+
+Location fields:
+- Project ID.
+- Location ID.
+- Client site code.
+- Site name.
+- State.
+- District.
+- City.
+- PIN code.
+- Complete address.
+- Site contact person.
+- Contact number.
+- Planned visit date.
+- Actual visit date.
+- Estimated mandays.
+- Actual mandays.
+- Assigned auditor/vendor.
+- Execution type.
+- Client billing rate.
+- Execution cost.
+- Location status.
+
+Location statuses:
+Unallocated, Allocated, Scheduled, In Progress, Submitted, Under Review, Approved, Completed, On Hold, Revisit Required, Rejected, Cancelled.
+
+IMPORTANT:
+Create a BULK EXCEL IMPORT feature.
+
+Allow users to:
+- Download a sample Excel template.
+- Upload Excel/CSV.
+- Map spreadsheet columns.
+- Preview data.
+- Validate mandatory fields.
+- Identify duplicate locations.
+- Display errors.
+- Confirm import.
+- Import 100–5,000 locations in batches.
+
+Allow location-wise filtering, bulk selection, assignment and Excel export.
+
+---
+
+# 8. VENDOR MANAGEMENT
+
+Create complete vendor management.
+
+Vendor master:
+- Vendor ID.
+- Vendor name.
+- Legal name.
+- Proprietor / contact person.
+- Mobile.
+- Email.
+- PAN.
+- GSTIN.
+- Address.
+- State.
+- Bank details.
+- IFSC.
+- MSME status.
+- Payment terms.
+- Vendor agreement.
+- KYC documents.
+- Vendor rating.
+- Active/inactive status.
+
+Support vendor hierarchy:
+
+JaySoftShine → Main Vendor → Sub-vendor → Individual Auditor.
+
+A vendor can:
+- View its assigned projects.
+- View assigned locations.
+- Allocate its own auditors.
+- Create sub-vendor allocations, subject to permissions.
+- Submit attendance.
+- Upload site reports.
+- Submit expenses.
+- Submit vendor bills.
+- View its own payable balance.
+- View its own payment history.
+
+Vendor must NOT see:
+- Client billing rate.
+- JaySoftShine margin.
+- Other vendors.
+- Other vendors' payment records.
+- Internal company accounting.
+
+Create vendor performance reports.
+
+---
+
+# 9. AUDITOR / WORKFORCE MANAGEMENT
+
+Create an auditor database.
+
+Fields:
+- Auditor ID.
+- Full name.
+- Mobile.
+- Email.
+- Address.
+- PAN.
+- Bank details.
+- IFSC.
+- Skills.
+- Experience.
+- Preferred locations.
+- Default per-day rate.
+- Travel allowance.
+- Availability.
+- KYC documents.
+- Agreement.
+- Status.
+
+Features:
+- Auditor profile.
+- Assignment history.
+- Attendance history.
+- Mandays summary.
+- Expense history.
+- Payment history.
+- Skills and experience filters.
+- Location-based search.
+- Availability calendar.
+- Performance records.
+- KYC expiry reminders.
+
+Provide a separate auditor login portal.
+
+Auditors should see only their own assignments, attendance, documents, expenses and payment information.
+
+---
+
+# 10. ASSIGNMENT MANAGEMENT ENGINE
+
+This is the most important operational module.
+
+Create an advanced assignment creation wizard.
+
+Steps:
+
+1. Select Project.
+2. Select Locations.
+3. Select execution type.
+4. Choose Direct Auditor / Vendor / Sub-vendor.
+5. Select resources.
+6. Set agreed rates.
+7. Enter expected mandays.
+8. Set planned dates.
+9. Add instructions.
+10. Review estimated revenue and cost.
+11. Submit for approval.
+12. Generate assignment work order PDF.
+
+Assignment types:
+- Direct individual auditor.
+- Main vendor.
+- Sub-vendor.
+- Vendor individual manpower.
+
+Every assignment must have:
+- Assignment ID.
+- Project ID.
+- Location IDs.
+- Vendor/auditor.
+- Parent assignment ID.
+- Assigned date.
+- Planned date.
+- Client rate snapshot.
+- Execution rate snapshot.
+- Expected mandays.
+- Estimated cost.
+- Estimated margin.
+- Approval status.
+- Instructions.
+
+Support:
+- One project with multiple vendors.
+- One vendor with multiple locations.
+- Multiple auditors under a vendor.
+- Different rates for different locations.
+- Bulk allocation.
+- Assignment transfer.
+- Reassignment approval.
+- Cancellation.
+- Assignment history.
+
+Prevent duplicate active allocation of the same location unless an authorized administrator approves an exception.
+
+Store historical rate snapshots. Changing a rate card must never alter existing assignment rates.
+
+---
+
+# 11. ATTENDANCE AND MANDAYS
+
+Create a daily attendance management system.
+
+Fields:
+- Project.
+- Location.
+- Assignment.
+- Auditor.
+- Vendor.
+- Work date.
+- Check-in.
+- Check-out.
+- Full day / Half day.
+- Mandays.
+- Remarks.
+- Photos.
+- Submitted by.
+- Approved by.
+- Approval date.
+
+Features:
+- Daily attendance submission.
+- Bulk attendance.
+- Vendor consolidated attendance.
+- Auditor individual attendance.
+- Admin approval.
+- Rejection with reason.
+- Attendance correction requests.
+- Half-day support.
+- Revisit tracking.
+- Expense submission.
+- Approved mandays calculation.
+
+Only approved attendance should generate final payable calculations.
+
+Use decimal mandays with controlled allowed fractions.
+
+---
+
+# 12. FIELD OPERATIONS AND REPORTING
+
+Create a mobile-first auditor interface.
+
+Features:
+- My assignments.
+- Today's site visits.
+- Location details.
+- Check-in/check-out.
+- Attendance submission.
+- Photo upload.
+- Document upload.
+- Work progress.
+- Completion remarks.
+- Expense claims.
+- Revisit requests.
+- Submit final report.
+
+Create work report templates for:
+- Physical Verification.
+- Stock Audit.
+- Inventory Count.
+- Asset Tagging.
+- Internal Audit.
+- Mystery Audit.
+- Insurance Survey.
+
+Support PDF, Excel, JPG, PNG and other common document formats.
+
+Provide document version history and approval status.
+
+Store files in private Supabase Storage buckets.
+
+---
+
+# 13. CLIENT BILLING AND RECEIVABLES
+
+Create a complete invoicing system.
+
+Billing methods:
+- Per manday.
+- Per location.
+- Fixed project amount.
+- Quantity/unit-based.
+- Milestone-based.
+- Hybrid.
+
+Invoice fields:
+- Invoice number.
+- Invoice date.
+- Due date.
+- Client.
+- Project.
+- Billing address.
+- GSTIN.
+- Invoice items.
+- Quantity.
+- Rate.
+- Taxable amount.
+- CGST.
+- SGST.
+- IGST.
+- Total invoice amount.
+- TDS information.
+- Payment status.
+
+Invoice statuses:
+Draft, Review, Approved, Issued, Partially Paid, Paid, Overdue, Cancelled.
+
+Features:
+- Multiple invoices per project.
+- Invoice PDF.
+- Payment receipt.
+- Credit notes.
+- Debit notes.
+- Partial payments.
+- TDS deducted by customer.
+- Outstanding amount.
+- Client ledger.
+- Ageing reports.
+- Payment reminders.
+
+Do not count GST as revenue.
+
+Track TDS receivable separately from actual bank receipts.
+
+---
+
+# 14. VENDOR PAYABLES
+
+Create a vendor settlement system.
+
+Fields:
+- Vendor.
+- Project.
+- Assignment.
+- Approved locations.
+- Approved mandays.
+- Vendor agreed rate.
+- Additional approved expenses.
+- Vendor invoice number.
+- Vendor invoice date.
+- Taxable amount.
+- GST.
+- TDS deduction.
+- Advance.
+- Payment amount.
+- Outstanding.
+
+Features:
+- Vendor bills.
+- Partial payments.
+- Advance payments.
+- Debit notes.
+- Credit notes.
+- TDS deductions.
+- GST input records.
+- Payment approval.
+- Payment voucher.
+- Vendor ledger.
+- Vendor outstanding ageing.
+
+---
+
+# 15. AUDITOR PAYABLES
+
+Create a separate auditor payment system.
+
+Fields:
+- Auditor.
+- Project.
+- Assignment.
+- Approved mandays.
+- Agreed per-day rate.
+- Travel expenses.
+- Food allowance.
+- Accommodation.
+- Additional expenses.
+- Advance.
+- TDS deduction, if applicable.
+- Gross payable.
+- Net payable.
+- Amount paid.
+- Outstanding.
+
+Features:
+- Auditor settlement sheet.
+- Partial payments.
+- Payment history.
+- Payment receipt.
+- Expense approval.
+- TDS records.
+- Auditor ledger.
+
+---
+
+# 16. EXPENSE MANAGEMENT
+
+Expense categories:
+- Travel.
+- Accommodation.
+- Food.
+- Local conveyance.
+- Printing.
+- Courier.
+- Equipment.
+- Miscellaneous.
+
+Each expense must be linked to:
+- Project.
+- Location, if applicable.
+- Submitted user.
+- Vendor/auditor, if applicable.
+- Expense category.
+- Amount.
+- Bill attachment.
+- Approval status.
+
+Support expense limits, approval workflow and expense reports.
+
+---
+
+# 17. COMPLETE DOUBLE-ENTRY ACCOUNTING
+
+Implement an actual accounting engine, not just financial summary cards.
+
+Accounting modules:
+
+1. Chart of Accounts.
+2. Journal Vouchers.
+3. Payment Vouchers.
+4. Receipt Vouchers.
+5. Contra Vouchers.
+6. Purchase Vouchers.
+7. Sales Vouchers.
+8. Credit Notes.
+9. Debit Notes.
+10. General Ledger.
+11. Trial Balance.
+12. Profit & Loss.
+13. Balance Sheet.
+14. Cash Flow Statement.
+15. Bank Reconciliation.
+16. Accounts Receivable.
+17. Accounts Payable.
+18. Cost Centres.
+19. Project-wise Accounting.
+20. Financial Year Closing.
+
+Use proper double-entry bookkeeping.
+
+Mandatory rule:
+Total debit must equal total credit for every posted journal.
+
+Store monetary amounts as integer paise to avoid floating-point accounting errors.
+
+Default Chart of Accounts should include:
+
+ASSETS:
+- Cash.
+- Bank.
+- Accounts Receivable.
+- TDS Receivable.
+- Input CGST.
+- Input SGST.
+- Input IGST.
+- Advances to Vendors.
+- Advances to Auditors.
+- Fixed Assets.
+
+LIABILITIES:
+- Accounts Payable.
+- Auditor Payables.
+- Vendor Payables.
+- Output CGST.
+- Output SGST.
+- Output IGST.
+- TDS Payable.
+- Statutory Liabilities.
+
+EQUITY:
+- Capital.
+- Retained Earnings.
+- Drawings.
+
+INCOME:
+- Audit Service Revenue.
+- Physical Verification Revenue.
+- Inventory Verification Revenue.
+- Asset Tagging Revenue.
+- Consultancy Revenue.
+- Other Income.
+
+EXPENSES:
+- Auditor Charges.
+- Vendor Charges.
+- Travel Expenses.
+- Accommodation Expenses.
+- Food Expenses.
+- Employee Expenses.
+- Office Expenses.
+- Software Expenses.
+- Bank Charges.
+- Other Expenses.
+
+Support project-wise cost centres.
+
+Accounting entries must be generated through validated financial workflows.
+
+Examples:
+
+Client invoice:
+Debit Client Receivable.
+Credit Service Revenue.
+Credit Output GST.
+
+Vendor bill:
+Debit Project Execution Cost.
+Debit Eligible Input GST.
+Credit Vendor Payable.
+
+Client receipt:
+Debit Bank.
+Debit TDS Receivable, where applicable.
+Credit Client Receivable.
+
+Vendor payment:
+Debit Vendor Payable.
+Credit Bank.
+Credit TDS Payable, where applicable.
+
+Auditor payment:
+Debit Auditor Payable.
+Credit Bank.
+
+Implement journal posting, reversal entries, accounting period locks, voucher numbering and audit trails.
+
+Never permit direct modification or deletion of posted journal entries.
+
+---
+
+# 18. GST AND TDS
+
+Create configurable Indian tax management.
+
+GST:
+- GSTIN.
+- CGST.
+- SGST.
+- IGST.
+- Taxable value.
+- Tax rate.
+- Input tax credit.
+- Output tax liability.
+- Sales register.
+- Purchase register.
+- Credit/debit notes.
+- HSN/SAC.
+- GST summary.
+
+TDS:
+- TDS section.
+- Applicable rate.
+- Deduction date.
+- Deductee PAN.
+- TDS payable.
+- TDS receivable.
+- Challan reference.
+- Certificate details.
+- Reconciliation.
+
+Tax rules must be configurable and effective-date-based.
+
+Do not hardcode statutory rates without an editable tax configuration.
+
+Do not assume every auditor or vendor has identical GST or TDS treatment.
+
+---
+
+# 19. PROJECT PROFITABILITY ENGINE
+
+Build automatic project profitability calculations.
+
+Gross Margin = Revenue – Direct Project Costs.
+
+Contribution Margin = Gross Margin – Variable Project Expenses.
+
+Net Project Profit = Contribution Margin – Allocated Overheads.
+
+Net Margin % = Net Project Profit / Revenue × 100.
+
+Example:
+
+Client revenue: ₹1,50,000.
+
+Vendor cost: ₹96,000.
+
+Other project expenses: ₹4,000.
+
+Gross margin: ₹54,000.
+
+Net project profit: ₹50,000.
+
+Create profitability at:
+- Project level.
+- Location level.
+- Vendor level.
+- Auditor level.
+- Client level.
+- Monthly level.
+- Financial year level.
+
+Keep estimated and actual profitability separate.
+
+Only approved mandays, verified costs and eligible billable values should enter final calculations.
+
+---
+
+# 20. MIS AND REPORTING
+
+Create comprehensive reports with filters and exports.
+
+Reports:
+- Client-wise revenue.
+- Project-wise revenue.
+- Project-wise profitability.
+Location-wise profitability.
+
+Vendor-wise profitability.
+
+Auditor-wise profitability.
+
+State-wise project execution.
+
+Monthly revenue.
+
+Monthly expense.
+
+Monthly P&L.
+
+Mandays report.
+
+Pending location report.
+
+Attendance report.
+
+Client outstanding.
+
+Vendor outstanding.
+
+Auditor outstanding.
+
+GST report.
+
+TDS report.
+
+Trial balance.
+
+General ledger.
+
+Balance sheet.
+
+Cash flow.
+
+Filters:
+
+Financial year.
+
+Date range.
+
+Client.
+
+Project.
+
+Vendor.
+
+Auditor.
+
+State.
+
+Project category.
+
+Payment status.
+
+Export to Excel, CSV and PDF.
+
+21. USER ROLES AND ACCESS CONTROL
+
+Implement role-based access control using Supabase Auth and PostgreSQL RLS.
+
+Roles:
+
+SUPER ADMIN.
+
+ADMIN.
+
+OFFICE ADMIN.
+
+PROJECT MANAGER.
+
+ACCOUNTS.
+
+VENDOR.
+
+SUB-VENDOR.
+
+AUDITOR.
+
+CLIENT.
+
+Permissions:
+
+ADMIN:
+Complete organization access.
+
+OFFICE ADMIN:
+Clients, projects, assignments, manpower, attendance and documents, according to assigned permissions.
+
+PROJECT MANAGER:
+Only assigned projects and operational records.
+
+ACCOUNTS:
+Invoices, receipts, payables, expenses, vouchers, ledgers and financial reports.
+
+VENDOR:
+Only assigned projects, locations, sub-vendors, auditors and own settlements.
+
+SUB-VENDOR:
+Only assigned sub-projects and resources.
+
+AUDITOR:
+Only own assignments, attendance, reports, expenses and payment history.
+
+CLIENT:
+Only their own projects, progress, approved reports and permitted billing documents.
+
+CRITICAL SECURITY REQUIREMENTS:
+
+Enable RLS on all exposed business tables.
+
+Never expose service-role keys to the browser.
+
+Verify permissions server-side.
+
+Keep financial rates and margins hidden from external users.
+
+Use private storage buckets.
+
+Use expiring signed document URLs.
+
+Record financial changes in immutable audit logs.
+
+Use administrator MFA.
+
+Maintain approval history.
+
+Prevent users from accessing other organizations' or other vendors' data.
+
+Apply strict record-level access to the vendor/sub-vendor hierarchy.
+
+Do not rely on hiding UI components for security.
+
+22. DATABASE DESIGN
+
+Create normalized PostgreSQL database tables with UUID primary keys, foreign keys, indexes, timestamps, constraints and appropriate enums.
+
+Include at least these tables:
+
+IDENTITY:
+organizations, profiles, organization_members, roles, permissions, role_permissions, user_roles.
+
+CRM:
+clients, client_contacts, client_addresses, client_rate_cards.
+
+VENDORS:
+vendors, vendor_contacts, vendor_bank_accounts, vendor_rate_cards, vendor_agreements, sub_vendors.
+
+WORKFORCE:
+auditors, auditor_skills, skills, auditor_rate_cards, auditor_availability.
+
+PROJECTS:
+projects, project_contracts, project_team, project_rate_cards, locations, location_schedules, project_milestones, project_status_history.
+
+ASSIGNMENTS:
+assignments, assignment_locations, resource_allocations, assignment_approvals.
+
+ATTENDANCE:
+attendance, timesheets, timesheet_entries, attendance_approvals.
+
+OPERATIONS:
+work_reports, work_report_versions, work_evidence, expense_claims, expense_claim_items.
+
+DOCUMENTS:
+documents, document_links, document_versions.
+
+BILLING:
+client_invoices, client_invoice_items, client_receipts, receipt_allocations, credit_notes, debit_notes.
+
+PAYABLES:
+vendor_bills, vendor_bill_items, vendor_payments, vendor_payment_allocations, auditor_payables, auditor_payments, auditor_payment_allocations.
+
+ACCOUNTING:
+chart_of_accounts, accounting_periods, journal_entries, journal_lines, cost_centres, bank_accounts, bank_transactions, bank_reconciliations.
+
+TAX:
+tax_rates, invoice_tax_lines, tds_sections, tds_transactions.
+
+SYSTEM:
+notifications, comments, approvals, activity_logs, audit_logs, system_settings, number_sequences.
+
+Add proper indexes on project_id, organization_id, client_id, vendor_id, auditor_id, assignment_id and transaction dates.
+
+Use transactional RPCs for posting journals and financial operations.
+
+Maintain historical rate snapshots.
+
+Support soft deletion for appropriate master records and prohibit deletion of posted financial transactions.
+
+23. USER INTERFACE DESIGN
+
+Create the following main interfaces.
+
+A. ADMIN DASHBOARD:
+Premium desktop sidebar, header, KPI cards, charts, recent projects, outstanding summaries and approval queue.
+
+B. PROJECT DETAIL:
+Project summary, progress indicator, locations table, assignments, team, vendors, documents, invoices and profitability tabs.
+
+C. LOCATION DETAIL:
+Address, contact details, assignment, auditor/vendor, attendance, reports and photographs.
+
+D. ASSIGNMENT WIZARD:
+Step-by-step direct/vendor/hybrid allocation.
+
+E. VENDOR PORTAL:
+Minimal dashboard showing assigned projects, location status, manpower, reports, attendance and settlements.
+
+F. AUDITOR PORTAL:
+Mobile-first interface showing today's assignments, attendance, check-in, report submission, photographs and payment status.
+
+G. CLIENT PORTAL:
+Project progress, completed locations, approved reports, invoices and payment information.
+
+H. ACCOUNTS DASHBOARD:
+Receivables, payables, cash/bank, pending approvals, journal vouchers, GST/TDS and profitability.
+
+I. ACCOUNTING INTERFACE:
+Professional accounting tables, debit/credit entry forms, trial balance, general ledger and financial statements.
+
+Use searchable data tables, pagination, column visibility, sorting, filtering, bulk selection and confirmation dialogs.
+
+Every important form should have validation, success/error messages, loading states and empty states.
+
+Provide a consistent page title, breadcrumbs and contextual actions.
+
+24. AUTOMATION AND NOTIFICATIONS
+
+Create an in-app notification system and email-ready event architecture.
+
+Notifications:
+
+New project created.
+
+New location assigned.
+
+Vendor assignment received.
+
+Auditor assignment received.
+
+Attendance submitted.
+
+Attendance approved/rejected.
+
+Report submitted.
+
+Report approved/rejected.
+
+Project deadline approaching.
+
+Invoice generated.
+
+Invoice overdue.
+
+Vendor payment due.
+
+Auditor payment processed.
+
+Document expiry approaching.
+
+Prepare integration points for:
+
+Email.
+
+WhatsApp Business API.
+
+PDF work orders.
+
+PDF invoices.
+
+Excel reports.
+
+Do not claim an external notification was sent unless the corresponding provider is configured and the action succeeds.
+
+25. REQUIRED APPLICATION ROUTES
+
+Create these routes with functional pages:
+
+/login
+/forgot-password
+/dashboard
+
+/dashboard/clients
+/dashboard/clients/new
+/dashboard/clients/[id]
+
+/dashboard/projects
+/dashboard/projects/new
+/dashboard/projects/[id]
+
+/dashboard/locations
+/dashboard/assignments
+/dashboard/assignments/new
+
+/dashboard/vendors
+/dashboard/vendors/[id]
+
+/dashboard/auditors
+/dashboard/auditors/[id]
+
+/dashboard/attendance
+/dashboard/field-operations
+/dashboard/documents
+
+/dashboard/billing/invoices
+/dashboard/billing/receipts
+
+/dashboard/payables/vendors
+/dashboard/payables/auditors
+
+/dashboard/expenses
+
+/dashboard/accounting/chart-of-accounts
+/dashboard/accounting/journals
+/dashboard/accounting/ledger
+/dashboard/accounting/trial-balance
+/dashboard/accounting/profit-loss
+/dashboard/accounting/balance-sheet
+/dashboard/accounting/bank-reconciliation
+
+/dashboard/gst
+/dashboard/tds
+
+/dashboard/reports
+/dashboard/notifications
+/dashboard/users
+/dashboard/settings
+
+/vendor/dashboard
+/vendor/projects
+/vendor/assignments
+/vendor/manpower
+/vendor/attendance
+/vendor/payments
+
+/auditor/dashboard
+/auditor/assignments
+/auditor/attendance
+/auditor/reports
+/auditor/expenses
+/auditor/payments
+
+/client/dashboard
+/client/projects
+/client/reports
+/client/invoices
+
+All routes must have proper authentication and role authorization.
+
+26. DEVELOPMENT QUALITY REQUIREMENTS
+
+Build the application in a modular architecture.
+
+Use reusable components:
+
+DataTable.
+
+SearchFilters.
+
+StatusBadge.
+
+PageHeader.
+
+KPI cards.
+
+FormDialog.
+
+ConfirmationDialog.
+
+FileUploader.
+
+FinancialSummary.
+
+ApprovalTimeline.
+
+ProjectProgress.
+
+InvoicePreview.
+
+PaymentForm.
+
+EmptyState.
+
+Use:
+
+Strict TypeScript.
+
+Zod schemas.
+
+Server-side input validation.
+
+Error boundaries.
+
+Loading skeletons.
+
+Toast notifications.
+
+Database transactions.
+
+Server-side pagination.
+
+Audit logs.
+
+Accessible form labels.
+
+Responsive layouts.
+
+Never use:
+
+Hardcoded financial totals in production.
+
+Fake success messages.
+
+Non-functional save buttons.
+
+Client-side-only security.
+
+Exposed secret keys.
+
+Unprotected financial APIs.
+
+Unvalidated monetary calculations.
+
+Create seed data only for clearly marked demonstration environments.
+
+27. IMPLEMENTATION DELIVERABLES
+
+Generate the complete project source code and files:
+
+Complete Next.js application.
+
+Responsive UI for all modules.
+
+Supabase authentication integration.
+
+PostgreSQL migrations.
+
+Database relationships and constraints.
+
+RLS policies.
+
+Role-based authorization.
+
+Financial calculation utilities.
+
+Double-entry journal engine.
+
+API routes / server actions.
+
+Form validation.
+
+Excel import/export.
+
+PDF generation.
+
+Supabase Storage integration.
+
+Dashboard analytics.
+
+Environment variable template.
+
+README installation guide.
+
+Deployment guide for Vercel.
+
+Database setup instructions.
+
+Security testing checklist.
+
+Create an organized source tree with:
+app/, components/, lib/, services/, types/, hooks/, supabase/migrations/, supabase/seed.sql.
+
+28. DEVELOPMENT EXECUTION INSTRUCTIONS
+
+Build this as one cohesive ERP application.
+
+Do not stop after creating the dashboard.
+
+Do not merely describe the screens. Implement them.
+
+Do not use fake data as a substitute for database connectivity.
+
+If a feature requires external API credentials, build the integration interface, explain the required environment variables and clearly mark it as awaiting configuration.
+
+Prioritize:
+
+Working authentication.
+
+Database schema.
+
+RLS and access security.
+
+Master data.
+
+Project and location management.
+
+Assignment engine.
+
+Attendance and reports.
+
+Financial workflows.
+
+Accounting.
+
+MIS and automation.
+
+If the entire system cannot be completed in a single generation, maintain the same architecture and design system and continue implementing remaining modules without deleting or replacing completed functionality.
+
+At the end, provide:
+
+A summary of implemented features.
+
+A list of database migrations.
+
+Required environment variables.
+
+Supabase setup steps.
+
+Vercel deployment instructions.
+
+Any unfinished integrations.
+
+A list of remaining tasks.
+
+FINAL PRODUCT EXPECTATION:
+
+A professional, secure and scalable JaySoftShine Audit & Operations ERP that allows the owner to control every client, project, location, vendor, auditor, manday, invoice, payment, expense and rupee of project profitability from one centralized application.
+
+The interface should look like a premium enterprise ERP, not a generic admin template.
+
+Start building the application now.
