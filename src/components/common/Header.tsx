@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { UserProfile, SystemNotification } from '../../types/erp';
 import { NavTabId } from './Sidebar';
+import { Cloud, CloudCheck, RefreshCw, AlertCircle } from 'lucide-react';
+import { CloudSyncStatus } from '../../services/cloudDb';
 
 interface HeaderProps {
   currentUser: UserProfile;
@@ -26,6 +28,9 @@ interface HeaderProps {
   notifications: SystemNotification[];
   onMarkNotificationRead: (id: string) => void;
   onLogout: () => void;
+  cloudSyncStatus?: CloudSyncStatus;
+  onForceSync?: () => Promise<void>;
+  isSyncing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -40,15 +45,20 @@ export const Header: React.FC<HeaderProps> = ({
   notifications,
   onMarkNotificationRead,
   onLogout,
+  cloudSyncStatus,
+  onForceSync,
+  isSyncing = false,
 }) => {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const tabLabels: Record<NavTabId, string> = {
     dashboard: 'Enterprise Management Dashboard',
     clients: 'CRM & Client Master',
+    'tax-clients': 'Income Tax (ITR) & GST Clients Master Utility',
     projects: 'Project Operations (Scenarios A, B & C)',
     locations: 'Site Location Master & Bulk Import',
     assignments: 'Assignment Engine & Resource Allocation',
@@ -67,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
     'audit-trail': 'Detailed Audit Trail & Regulatory Compliance Log',
     notifications: 'System Alerts & Event Notifications',
     users: 'User Roles & Access Control (RBAC)',
-    settings: 'System Configuration & Mail SMTP Setup',
+    settings: 'System Configuration & Gmail Gateway',
     'vendor-portal': 'Dedicated Vendor Outsourcing Portal',
     'auditor-portal': 'Mobile-First Auditor Portal',
     'client-portal': 'Client Transparency Portal',
@@ -101,6 +111,43 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right section: role, change password, notifications */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Live Cloud Database Sync Status */}
+        <button
+          type="button"
+          onClick={async () => {
+            if (onForceSync && !isManualSyncing) {
+              setIsManualSyncing(true);
+              try {
+                await onForceSync();
+              } finally {
+                setTimeout(() => setIsManualSyncing(false), 800);
+              }
+            }
+          }}
+          title={
+            cloudSyncStatus?.connected
+              ? `Google Cloud Firestore: Live synchronized across all devices. Last sync: ${cloudSyncStatus.lastSyncedAt || 'Active'}. Click to force sync.`
+              : `Cloud connection status: ${cloudSyncStatus?.error || 'Syncing...'}. Click to reconnect.`
+          }
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${
+              cloudSyncStatus?.connected
+                ? 'bg-emerald-500 animate-pulse'
+                : 'bg-amber-500'
+            }`}
+          />
+          <RefreshCw
+            className={`w-3 h-3 text-slate-500 ${
+              isSyncing || isManualSyncing ? 'animate-spin text-slate-900' : ''
+            }`}
+          />
+          <span className="hidden sm:inline font-mono">
+            {isSyncing || isManualSyncing ? 'Syncing...' : 'Cloud Sync: Live'}
+          </span>
+        </button>
+
         {/* Change Admin Password shortcut */}
         {currentUser.role === 'SUPER_ADMIN' && (
           <button
@@ -114,16 +161,16 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* SMTP Setup shortcut */}
+        {/* Gmail Setup shortcut */}
         {currentUser.role === 'SUPER_ADMIN' && (
           <button
             type="button"
             onClick={() => onNavigateTab('settings')}
-            title="Mail SMTP Setup (Admin)"
+            title="Google Workspace Gmail Gateway"
             className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
           >
-            <Mail className="w-3.5 h-3.5 text-slate-600" />
-            <span>Mail SMTP</span>
+            <Mail className="w-3.5 h-3.5 text-red-600" />
+            <span>Gmail Gateway</span>
           </button>
         )}
 

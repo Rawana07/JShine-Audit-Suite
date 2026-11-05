@@ -83,6 +83,26 @@ export type LocationStatus =
   | 'Rejected'
   | 'Cancelled';
 
+export type KycStatus = 'Pending' | 'Verified' | 'Rejected' | 'In Review';
+
+export interface KycInfo {
+  status: KycStatus;
+  panNumber?: string;
+  panDocUrl?: string;
+  gstin?: string;
+  gstCertUrl?: string;
+  aadhaarNumber?: string;
+  aadhaarDocUrl?: string;
+  msmeUdyamNo?: string;
+  cancelledChequeUrl?: string;
+  bankAccount?: string;
+  bankIfsc?: string;
+  bankName?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  remarks?: string;
+}
+
 export interface Client {
   id: string;
   clientId: string; // e.g. JSS-CLI-001
@@ -98,11 +118,14 @@ export interface Client {
   contactPerson: string;
   contactEmail: string;
   contactPhone: string;
+  email?: string;
+  phone?: string;
   paymentTermsDays: number;
   tdsRatePercent: number; // e.g., 2% or 10%
   creditLimit: number;
   status: 'Active' | 'Inactive';
   notes?: string;
+  kyc?: KycInfo;
   createdAt: string;
 }
 
@@ -130,6 +153,17 @@ export interface Project {
   createdAt: string;
 }
 
+export interface ProjectSyncConfig {
+  assignedEntityId?: string;
+  assignedEntityName?: string;
+  assignedType?: 'AUDITOR' | 'VENDOR' | 'HYBRID';
+  executionCostRate?: number;
+  mandaysPerLocation?: number;
+  cities?: string[];
+  autoGenerateLocations?: boolean;
+  autoGenerateAssignment?: boolean;
+}
+
 export interface ProjectLocation {
   id: string;
   projectId: string;
@@ -137,6 +171,7 @@ export interface ProjectLocation {
   locationId: string; // e.g. JSS-2026-0001-L001
   clientSiteCode: string;
   siteName: string;
+  storeName?: string;
   address: string;
   city: string;
   district: string;
@@ -154,6 +189,7 @@ export interface ProjectLocation {
   clientBillingRate: number;
   executionCostRate: number;
   status: LocationStatus;
+  remarks?: string;
   revisitRemarks?: string;
   createdAt: string;
 }
@@ -178,6 +214,7 @@ export interface Vendor {
   defaultDayRate: number;
   rating: number; // 1-5
   status: 'Active' | 'Inactive';
+  kyc?: KycInfo;
   createdAt: string;
 }
 
@@ -188,6 +225,8 @@ export interface Auditor {
   email: string;
   phone: string;
   address: string;
+  city?: string;
+  state?: string;
   pan: string;
   bankName: string;
   bankAccount: string;
@@ -196,10 +235,12 @@ export interface Auditor {
   experienceYears: number;
   preferredStates: string[];
   defaultDayRate: number; // e.g. ₹1000
+  dailyRate?: number;
   travelAllowancePerKm: number;
   dailyFoodAllowance: number;
   isAvailable: boolean;
   status: 'Active' | 'Inactive';
+  kyc?: KycInfo;
   createdAt: string;
 }
 
@@ -453,6 +494,9 @@ export type AuditAction =
 
 export type AuditEntityType =
   | 'CLIENT'
+  | 'AUDITOR'
+  | 'VENDOR'
+  | 'COMPANY'
   | 'PROJECT'
   | 'LOCATION'
   | 'ASSIGNMENT'
@@ -465,7 +509,8 @@ export type AuditEntityType =
   | 'EXPENSE'
   | 'JOURNAL_ENTRY'
   | 'SECURITY'
-  | 'SMTP';
+  | 'SMTP'
+  | 'TAX_CLIENT';
 
 export type AuditFieldChange = {
   field: string;
@@ -489,9 +534,29 @@ export interface AuditLogEntry {
   severity: 'INFO' | 'NOTICE' | 'HIGH' | 'CRITICAL';
 }
 
+export interface TaxClient {
+  id: string;
+  sn: number; // SN
+  name: string; // NAME
+  mobile: string; // MOB. NO.
+  email: string; // EMAIL ID
+  pan: string; // PAN
+  password: string; // PASSWORD
+  vendorName: string; // Vendor Name (ITR / GST vendor)
+  serviceType: 'ITR' | 'GST' | 'BOTH';
+  aysFiled: string[]; // AYs filled ITR e.g. ['AY 2023-24', 'AY 2024-25', 'AY 2025-26']
+  gstin?: string;
+  status: 'Active' | 'Pending Filing' | 'Completed' | 'Notice Received';
+  filingDate?: string;
+  ackNumber?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export type NavTabId =
   | 'dashboard'
   | 'clients'
+  | 'tax-clients'
   | 'projects'
   | 'locations'
   | 'assignments'

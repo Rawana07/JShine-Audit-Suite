@@ -48,7 +48,7 @@ export const exportInvoiceToPdf = (invoice: ClientInvoice): void => {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225); // slate-300
   doc.text('Audit & Operations Outsourcing Division • Single Org: JaySoftShine', margin + 68, y + 42);
-  doc.text('Regd Office: 402, Trade Square, Senapati Bapat Marg, Dadar West, Mumbai - 400028', margin + 68, y + 54);
+  doc.text('Regd Office: Corporate Office, C-Scheme, Jaipur, Rajasthan - 302001', margin + 68, y + 54);
 
   // Document Badge on Right
   doc.setFont('helvetica', 'bold');
@@ -69,9 +69,9 @@ export const exportInvoiceToPdf = (invoice: ClientInvoice): void => {
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('GSTIN: 27AAACJ2329J1Z4', margin + 8, y + 14);
-  doc.text('PAN: AAACJ2329J', margin + 170, y + 14);
-  doc.text('State: Maharashtra (Code: 27)', margin + 300, y + 14);
+  doc.text('GSTIN: 08BKDPV7945P1Z2', margin + 8, y + 14);
+  doc.text('PAN: BKDPV7945P', margin + 170, y + 14);
+  doc.text('State: Rajasthan (Code: 08)', margin + 300, y + 14);
   doc.text('Reverse Charge: No', pageWidth - margin - 8, y + 14, { align: 'right' });
 
   y += 30;
@@ -266,10 +266,10 @@ export const exportInvoiceToPdf = (invoice: ClientInvoice): void => {
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
-  doc.text('Beneficiary Name: JAYSOFTSHINE SERVICES LLP', margin + 10, y + 30);
+  doc.text('Beneficiary Name: JaySoftShine', margin + 10, y + 30);
   doc.text('Bank Name: HDFC Bank Ltd', margin + 10, y + 42);
-  doc.text('Current Account No: 50200088991100', margin + 10, y + 54);
-  doc.text('IFSC Code: HDFC0000240 • Branch: Lower Parel, Mumbai', margin + 10, y + 66);
+  doc.text('Current Account No: 50200088991122', margin + 10, y + 54);
+  doc.text('IFSC Code: HDFC0000123 • Branch: Jaipur Main Branch', margin + 10, y + 66);
   doc.text('Payment Ref: Please quote Invoice Number in NEFT/RTGS narration', margin + 10, y + 78);
 
   y += 105;
@@ -284,13 +284,13 @@ export const exportInvoiceToPdf = (invoice: ClientInvoice): void => {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
   doc.text('Declaration: We declare that this invoice shows the actual price of the services described and that all particulars are true and correct.', margin, y + 10);
-  doc.text('Subject to Mumbai Jurisdiction only. Electronic document issued under Information Technology Act, 2000.', margin, y + 20);
+  doc.text('Subject to Rajasthan Jurisdiction only. Electronic document issued under Information Technology Act, 2000.', margin, y + 20);
 
   // Signatory on Right
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('For JAYSOFTSHINE SERVICES LLP', pageWidth - margin - 10, y + 15, { align: 'right' });
+  doc.text('For JaySoftShine', pageWidth - margin - 10, y + 15, { align: 'right' });
 
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');

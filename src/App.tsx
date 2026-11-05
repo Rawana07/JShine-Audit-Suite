@@ -37,13 +37,19 @@ import {
   AuditEntityType,
   AuditFieldChange,
   RolePermissionConfig,
+  OrganizationProfile,
+  LocationStatus,
+  ProjectSyncConfig,
+  TaxClient,
 } from './types/erp';
 import { formatINR } from './utils/rules';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, KeyRound, CheckCircle2, Lock, X } from 'lucide-react';
+import { Modal } from './components/common/Modal';
 
 // Module Views
 import { DashboardView } from './components/modules/DashboardView';
 import { ClientsView } from './components/modules/ClientsView';
+import { TaxClientsView } from './components/modules/TaxClientsView';
 import { ProjectsView } from './components/modules/ProjectsView';
 import { LocationsView } from './components/modules/LocationsView';
 import { AssignmentsView } from './components/modules/AssignmentsView';
@@ -64,6 +70,13 @@ import { UserManagementView } from './components/modules/UserManagementView';
 import { SettingsView } from './components/modules/SettingsView';
 import { PortalsView } from './components/modules/PortalsView';
 import { AuditTrailView } from './components/modules/AuditTrailView';
+import {
+  fetchFullCloudState,
+  pushStateToCloud,
+  listenToCloudUpdates,
+  subscribeToSyncStatus,
+  CloudSyncStatus,
+} from './services/cloudDb';
 
 export default function App() {
   const [state, setState] = useState<AppState>(getInitialState);
@@ -72,10 +85,103 @@ export default function App() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [selectedProjectIdForDetail, setSelectedProjectIdForDetail] = useState<string | null>(null);
 
-  // Sync state to local storage on change
+  // Cloud Database Synchronization State (Firestore)
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>({
+    connected: false,
+    lastSyncedAt: null,
+    error: null,
+  });
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+
+  // Email Password Reset Link State (?resetEmail=...&resetToken=...)
+  const [resetUrlParams, setResetUrlParams] = useState<{ email: string; token: string } | null>(null);
+  const [resetModalNewPassword, setResetModalNewPassword] = useState('');
+  const [resetModalConfirmPassword, setResetModalConfirmPassword] = useState('');
+  const [resetModalSuccessMsg, setResetModalSuccessMsg] = useState<string | null>(null);
+  const [resetModalErrorMsg, setResetModalErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const search = new URLSearchParams(window.location.search);
+      const email = search.get('resetEmail');
+      const token = search.get('resetToken');
+      if (email && token) {
+        setResetUrlParams({ email, token });
+      }
+    }
+  }, []);
+
+  // Multi-Device Cloud Sync Initialization
+  useEffect(() => {
+    let isMounted = true;
+
+    // 1. Subscribe to connection status
+    const unsubStatus = subscribeToSyncStatus((status) => {
+      if (isMounted) setCloudSyncStatus(status);
+    });
+
+    // 2. Fetch full cloud state on boot so any device immediately loads the latest state
+    (async () => {
+      setIsCloudSyncing(true);
+      try {
+        const cloudData = await fetchFullCloudState();
+        if (cloudData && isMounted) {
+          setState((prev) => {
+            const merged = { ...prev, ...cloudData };
+            saveState(merged);
+            return merged;
+          });
+        } else if (!cloudData) {
+          // If cloud is empty, seed with current state
+          await pushStateToCloud(state, true);
+        }
+      } catch (err) {
+        console.warn('Initial cloud sync notice:', err);
+      } finally {
+        if (isMounted) setIsCloudSyncing(false);
+      }
+    })();
+
+    // 3. Listen to real-time updates pushed from other devices
+    const unsubCloud = listenToCloudUpdates((partial) => {
+      if (isMounted) {
+        setState((prev) => {
+          const merged = { ...prev, ...partial };
+          saveState(merged);
+          return merged;
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubStatus();
+      unsubCloud();
+    };
+  }, []);
+
+  // Sync state to local storage and push to Google Cloud Firestore on change
   useEffect(() => {
     saveState(state);
+    pushStateToCloud(state);
   }, [state]);
+
+  const handleForceSync = async () => {
+    setIsCloudSyncing(true);
+    try {
+      const cloudData = await fetchFullCloudState();
+      if (cloudData) {
+        setState((prev) => {
+          const merged = { ...prev, ...cloudData };
+          saveState(merged);
+          return merged;
+        });
+      }
+      await pushStateToCloud(state, true);
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
 
   // Centralized audit logger
   const createAuditEntry = (
@@ -349,8 +455,42 @@ export default function App() {
     }));
   };
 
+  // Organization Master Handler
+  const handleUpdateOrganization = (org: OrganizationProfile) => {
+    const audit = createAuditEntry(
+      'CONFIG_CHANGE',
+      'COMPANY',
+      'ORG-MASTER',
+      'Company Master Configuration',
+      `Updated company profile: ${org.name} (GSTIN: ${org.gstin}, PAN: ${org.pan})`,
+      [
+        { field: 'name', oldValue: state.organization.name, newValue: org.name },
+        { field: 'gstin', oldValue: state.organization.gstin, newValue: org.gstin },
+        { field: 'pan', oldValue: state.organization.pan, newValue: org.pan },
+      ],
+      'CRITICAL'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      organization: org,
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Organization Master Saved',
+          message: `${org.name} statutory and tax parameters updated.`,
+          type: 'success',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
   // Business Action Handlers with Detailed Audit Logging
-  const handleAddClient = (client: Client) => {
+  const handleAddClient = (client: Client, loginPassword?: string) => {
     const audit = createAuditEntry(
       'CREATE',
       'CLIENT',
@@ -361,15 +501,30 @@ export default function App() {
       'NOTICE'
     );
 
+    const clientEmail = (client.contactEmail || client.email || `${client.clientId.toLowerCase()}@clientportal.com`).trim().toLowerCase();
+    const newUser: UserProfile = {
+      id: `usr_${client.clientId}`,
+      name: client.contactPerson || client.name,
+      email: clientEmail,
+      role: 'CLIENT',
+      phone: client.contactPhone || client.phone || '+91 98200 00000',
+      linkedEntityId: client.id,
+      status: 'ACTIVE',
+      department: client.name,
+      password: (loginPassword && loginPassword.trim()) ? loginPassword.trim() : 'Jshine@2329',
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
     setState((prev) => ({
       ...prev,
       clients: [client, ...prev.clients],
+      users: [...prev.users.filter((u) => u.email.toLowerCase() !== newUser.email.toLowerCase() && u.linkedEntityId !== client.id && u.linkedEntityId !== client.clientId), newUser],
       auditLogs: [audit, ...prev.auditLogs],
       notifications: [
         {
           id: `notif_${Date.now()}`,
           title: 'New Client Onboarded',
-          message: `${client.name} (${client.clientId}) registered.`,
+          message: `${client.name} (${client.clientId}) registered with active Portal Login.`,
           type: 'success',
           read: false,
           createdAt: new Date().toISOString(),
@@ -379,16 +534,282 @@ export default function App() {
     }));
   };
 
-  const handleAddProject = (project: Project) => {
+  const handleUpdateClient = (updatedClient: Client) => {
+    const old = state.clients.find((c) => c.clientId === updatedClient.clientId || c.id === updatedClient.id);
+    const audit = createAuditEntry(
+      'UPDATE',
+      'CLIENT',
+      updatedClient.clientId,
+      updatedClient.name,
+      `Updated client profile & KYC for ${updatedClient.name}`,
+      [
+        { field: 'kycStatus', oldValue: old?.kyc?.status, newValue: updatedClient.kyc?.status },
+        { field: 'creditLimit', oldValue: old?.creditLimit, newValue: updatedClient.creditLimit },
+      ],
+      'NOTICE'
+    );
+
+    setState((prev) => {
+      const newEmail = (updatedClient.contactEmail || updatedClient.email || '').trim().toLowerCase();
+      const updatedUsers = prev.users.map((u) => {
+        if (
+          u.linkedEntityId === updatedClient.id ||
+          u.linkedEntityId === updatedClient.clientId ||
+          (old && (u.email.toLowerCase() === (old.contactEmail || old.email || '').toLowerCase()))
+        ) {
+          return {
+            ...u,
+            name: updatedClient.contactPerson || updatedClient.name,
+            email: newEmail || u.email,
+            phone: updatedClient.contactPhone || updatedClient.phone || u.phone,
+            department: updatedClient.name,
+          };
+        }
+        return u;
+      });
+
+      return {
+        ...prev,
+        clients: prev.clients.map((c) => (c.id === updatedClient.id || c.clientId === updatedClient.clientId ? updatedClient : c)),
+        users: updatedUsers,
+        auditLogs: [audit, ...prev.auditLogs],
+        notifications: [
+          {
+            id: `notif_${Date.now()}`,
+            title: 'Client Profile Updated',
+            message: `${updatedClient.name} KYC and profile details saved.`,
+            type: 'success',
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev.notifications,
+        ],
+      };
+    });
+  };
+
+  const handleAddTaxClient = (client: TaxClient) => {
+    const audit = createAuditEntry(
+      'CREATE',
+      'TAX_CLIENT',
+      client.id,
+      client.name,
+      `Onboarded tax client ${client.name} (PAN: ${client.pan}) for ${client.serviceType} under vendor ${client.vendorName}`,
+      [{ field: 'pan', oldValue: null, newValue: client.pan }],
+      'NOTICE'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      taxClients: [client, ...(prev.taxClients || [])],
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Tax Client Registered',
+          message: `${client.name} (PAN: ${client.pan}) added to ITR & GST Compliance Directory.`,
+          type: 'success',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleUpdateTaxClient = (updatedClient: TaxClient) => {
+    const old = state.taxClients?.find((c) => c.id === updatedClient.id);
+    const audit = createAuditEntry(
+      'UPDATE',
+      'TAX_CLIENT',
+      updatedClient.id,
+      updatedClient.name,
+      `Updated tax client records for ${updatedClient.name} (AYs: ${updatedClient.aysFiled.join(', ')})`,
+      [
+        { field: 'aysFiled', oldValue: old?.aysFiled.join(', '), newValue: updatedClient.aysFiled.join(', ') },
+        { field: 'status', oldValue: old?.status, newValue: updatedClient.status },
+      ],
+      'NOTICE'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      taxClients: (prev.taxClients || []).map((c) =>
+        c.id === updatedClient.id ? updatedClient : c
+      ),
+      auditLogs: [audit, ...prev.auditLogs],
+    }));
+  };
+
+  const handleDeleteTaxClient = (clientId: string) => {
+    const client = state.taxClients?.find((c) => c.id === clientId);
+    const audit = createAuditEntry(
+      'DELETE',
+      'TAX_CLIENT',
+      clientId,
+      client?.name || clientId,
+      `Removed tax client ${client?.name || clientId} (PAN: ${client?.pan}) from compliance master`,
+      undefined,
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      taxClients: (prev.taxClients || []).filter((c) => c.id !== clientId),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Tax Client Removed',
+          message: `Record for ${client?.name || 'client'} was removed from database.`,
+          type: 'warning',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleDeleteClient = (clientId: string) => {
+    const c = state.clients.find((item) => item.clientId === clientId);
+    const audit = createAuditEntry(
+      'DELETE',
+      'CLIENT',
+      clientId,
+      c?.name || clientId,
+      `Deactivated / Removed client ${c?.name || clientId}`,
+      [{ field: 'status', oldValue: 'Active', newValue: 'Deactivated' }],
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      clients: prev.clients.filter((item) => item.clientId !== clientId),
+      users: prev.users.filter((u) => u.linkedEntityId !== clientId),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Client Removed',
+          message: `${c?.name || clientId} removed from active roster.`,
+          type: 'info',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleAddProject = (project: Project, syncConfig?: ProjectSyncConfig) => {
+    const client = state.clients.find((c) => c.id === project.clientId || c.clientId === project.clientId);
+
+    // Auto-generate Locations across hubs
+    const generatedLocations: ProjectLocation[] = [];
+    if (syncConfig?.autoGenerateLocations !== false) {
+      const defaultHubs = [
+        { city: 'Mumbai', state: 'Maharashtra', pincode: '400001' },
+        { city: 'Pune', state: 'Maharashtra', pincode: '411001' },
+        { city: 'Ahmedabad', state: 'Gujarat', pincode: '380001' },
+        { city: 'Jaipur', state: 'Rajasthan', pincode: '302001' },
+        { city: 'Delhi NCR', state: 'Delhi', pincode: '110001' },
+        { city: 'Bengaluru', state: 'Karnataka', pincode: '560001' },
+        { city: 'Hyderabad', state: 'Telangana', pincode: '500001' },
+        { city: 'Chennai', state: 'Tamil Nadu', pincode: '600001' },
+        { city: 'Nagpur', state: 'Maharashtra', pincode: '440001' },
+        { city: 'Kolkata', state: 'West Bengal', pincode: '700001' },
+      ];
+
+      const inputCities = syncConfig?.cities && syncConfig.cities.length > 0 ? syncConfig.cities : [];
+      const mandaysPerLoc =
+        syncConfig?.mandaysPerLocation ||
+        Math.max(1, Math.round(project.estimatedMandays / Math.max(1, project.totalLocations)));
+      const executionRate = syncConfig?.executionCostRate || Math.round(project.clientRatePerManday * 0.65);
+
+      for (let i = 0; i < project.totalLocations; i++) {
+        const hub = defaultHubs[i % defaultHubs.length];
+        const cityName = inputCities[i % inputCities.length] || hub.city;
+        const locSeq = String(i + 1).padStart(3, '0');
+        const locId = `${project.projectId}-L${locSeq}`;
+        const siteCode = `${client?.clientId || 'CLI'}-S${locSeq}`;
+
+        generatedLocations.push({
+          id: `loc_${project.id}_${i + 1}`,
+          projectId: project.id,
+          projectCode: project.projectId,
+          locationId: locId,
+          clientSiteCode: siteCode,
+          siteName: `${project.name} - Hub #${i + 1} (${cityName})`,
+          address: `Survey ${100 + i * 15}/2, Commercial Logistics Park, Sector ${i + 3}`,
+          city: cityName,
+          district: cityName,
+          state: hub.state,
+          pincode: hub.pincode,
+          contactPerson: client?.contactPerson || 'Store Operations Lead',
+          contactPhone: client?.contactPhone || '+91 98200 12345',
+          plannedVisitDate: project.startDate,
+          estimatedMandays: mandaysPerLoc,
+          actualMandays: 0,
+          assignedType: syncConfig?.assignedType === 'VENDOR' ? 'VENDOR' : 'AUDITOR',
+          assignedEntityId: syncConfig?.assignedEntityId || '',
+          assignedEntityName: syncConfig?.assignedEntityName || '',
+          clientBillingRate: project.clientRatePerManday,
+          executionCostRate: executionRate,
+          status: 'Allocated',
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Auto-generate Assignment Work Order
+    let generatedAssignment: Assignment | null = null;
+    if (syncConfig?.autoGenerateAssignment !== false && syncConfig?.assignedEntityName) {
+      const totalExpectedMandays =
+        project.estimatedMandays || project.totalLocations * (syncConfig?.mandaysPerLocation || 2);
+      const clientRate = project.clientRatePerManday;
+      const execRate = syncConfig?.executionCostRate || Math.round(clientRate * 0.65);
+      const rev = totalExpectedMandays * clientRate;
+      const cost = totalExpectedMandays * execRate;
+      const margin = rev - cost;
+
+      generatedAssignment = {
+        id: `asn_${project.id}_${Date.now()}`,
+        assignmentId: `JSS-ASN-2026-${String(state.assignments.length + 1).padStart(3, '0')}`,
+        projectId: project.id,
+        projectName: project.name,
+        locationIds: generatedLocations.map((l) => l.id),
+        executionType: project.executionModel === 'VENDOR' ? 'VENDOR' : 'DIRECT',
+        assignedToId: syncConfig.assignedEntityId || '',
+        assignedToName: syncConfig.assignedEntityName || '',
+        assignedDate: new Date().toISOString().split('T')[0],
+        plannedStartDate: project.startDate,
+        plannedEndDate: project.endDate,
+        expectedMandays: totalExpectedMandays,
+        clientRateSnapshot: clientRate,
+        executionRateSnapshot: execRate,
+        estimatedRevenue: rev,
+        estimatedCost: cost,
+        estimatedMargin: margin,
+        approvalStatus: 'Approved',
+        instructions:
+          project.instructions ||
+          'Perform 100% stock count, asset tagging, verify stock register balances, and obtain counter-signatures.',
+        createdAt: new Date().toISOString(),
+      };
+    }
+
     const audit = createAuditEntry(
       'CREATE',
       'PROJECT',
       project.projectId,
       project.name,
-      `Created audit project ${project.name} under ${project.executionModel} model (Client Rate: ${formatINR(project.clientRatePerManday)}/day)`,
+      `Created project ${project.name} (${project.clientName}) under ${project.executionModel} model. Synced ${generatedLocations.length} locations & Work Order for ${syncConfig?.assignedEntityName || 'Partner'} (Client Fees: ${formatINR(project.clientRatePerManday)}/day, Cost Rate: ${formatINR(syncConfig?.executionCostRate || 0)}/day)`,
       [
         { field: 'budget', oldValue: 0, newValue: formatINR(project.budget) },
         { field: 'executionModel', oldValue: null, newValue: project.executionModel },
+        { field: 'locationsSynced', oldValue: 0, newValue: generatedLocations.length },
+        { field: 'assignedTo', oldValue: null, newValue: syncConfig?.assignedEntityName || 'Unassigned' },
       ],
       'HIGH'
     );
@@ -396,13 +817,15 @@ export default function App() {
     setState((prev) => ({
       ...prev,
       projects: [project, ...prev.projects],
+      locations: [...generatedLocations, ...prev.locations],
+      assignments: generatedAssignment ? [generatedAssignment, ...prev.assignments] : prev.assignments,
       auditLogs: [audit, ...prev.auditLogs],
       notifications: [
         {
           id: `notif_${Date.now()}`,
-          title: 'New Audit Project Created',
-          message: `${project.name} (${project.projectId}) launched.`,
-          type: 'info',
+          title: 'Project & Operations Synchronized',
+          message: `${project.name} (${project.projectId}) launched with ${generatedLocations.length} sites allocated to ${syncConfig?.assignedEntityName || 'team'}.`,
+          type: 'success',
           read: false,
           createdAt: new Date().toISOString(),
         },
@@ -484,17 +907,489 @@ export default function App() {
     }));
   };
 
-  const handleAddAuditor = (auditor: Auditor) => {
+  const handleAddAuditor = (auditor: Auditor, loginPassword?: string) => {
+    const audit = createAuditEntry(
+      'CREATE',
+      'AUDITOR',
+      auditor.auditorId,
+      auditor.name,
+      `Onboarded auditor ${auditor.name} (${auditor.city || 'India'}, ${auditor.state || 'IN'}) with KYC ${auditor.kyc?.status || 'Pending'}`,
+      [{ field: 'name', oldValue: null, newValue: auditor.name }],
+      'NOTICE'
+    );
+
+    const auditorEmail = auditor.email.trim().toLowerCase();
+    const newUser: UserProfile = {
+      id: `usr_${auditor.auditorId}`,
+      name: auditor.name,
+      email: auditorEmail,
+      role: 'AUDITOR',
+      phone: auditor.phone,
+      linkedEntityId: auditor.id,
+      status: 'ACTIVE',
+      department: 'Field Audit Associate',
+      password: (loginPassword && loginPassword.trim()) ? loginPassword.trim() : 'Jshine@2329',
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
     setState((prev) => ({
       ...prev,
       auditors: [auditor, ...prev.auditors],
+      users: [...prev.users.filter((u) => u.email.toLowerCase() !== newUser.email.toLowerCase() && u.linkedEntityId !== auditor.id && u.linkedEntityId !== auditor.auditorId), newUser],
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Field Auditor Registered',
+          message: `${auditor.name} (${auditor.auditorId}) onboarded with active Portal Login.`,
+          type: 'success',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
     }));
   };
 
-  const handleAddVendor = (vendor: Vendor) => {
+  const handleUpdateAuditor = (updatedAuditor: Auditor) => {
+    const old = state.auditors.find((a) => a.auditorId === updatedAuditor.auditorId || a.id === updatedAuditor.id);
+    const audit = createAuditEntry(
+      'UPDATE',
+      'AUDITOR',
+      updatedAuditor.auditorId,
+      updatedAuditor.name,
+      `Updated field auditor profile & KYC for ${updatedAuditor.name} (KYC: ${updatedAuditor.kyc?.status || 'Pending'})`,
+      [
+        { field: 'kycStatus', oldValue: old?.kyc?.status, newValue: updatedAuditor.kyc?.status },
+        { field: 'dailyRate', oldValue: old?.dailyRate, newValue: updatedAuditor.dailyRate },
+      ],
+      'NOTICE'
+    );
+
+    setState((prev) => {
+      const newEmail = updatedAuditor.email.trim().toLowerCase();
+      const updatedUsers = prev.users.map((u) => {
+        if (
+          u.linkedEntityId === updatedAuditor.id ||
+          u.linkedEntityId === updatedAuditor.auditorId ||
+          (old && (u.email.toLowerCase() === old.email.toLowerCase()))
+        ) {
+          return {
+            ...u,
+            name: updatedAuditor.name,
+            email: newEmail || u.email,
+            phone: updatedAuditor.phone || u.phone,
+          };
+        }
+        return u;
+      });
+
+      return {
+        ...prev,
+        auditors: prev.auditors.map((a) => (a.id === updatedAuditor.id || a.auditorId === updatedAuditor.auditorId ? updatedAuditor : a)),
+        users: updatedUsers,
+        auditLogs: [audit, ...prev.auditLogs],
+        notifications: [
+          {
+            id: `notif_${Date.now()}`,
+            title: 'Auditor Profile Updated',
+            message: `${updatedAuditor.name} profile and KYC updated.`,
+            type: 'success',
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev.notifications,
+        ],
+      };
+    });
+  };
+
+  const handleDeleteAuditor = (auditorId: string) => {
+    const a = state.auditors.find((item) => item.auditorId === auditorId);
+    const audit = createAuditEntry(
+      'DELETE',
+      'AUDITOR',
+      auditorId,
+      a?.name || auditorId,
+      `Deactivated / Removed auditor ${a?.name || auditorId}`,
+      [{ field: 'status', oldValue: 'Active', newValue: 'Deactivated' }],
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      auditors: prev.auditors.filter((item) => item.auditorId !== auditorId),
+      users: prev.users.filter((u) => u.linkedEntityId !== auditorId),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Auditor Removed',
+          message: `${a?.name || auditorId} removed from roster.`,
+          type: 'info',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleAddVendor = (vendor: Vendor, loginPassword?: string) => {
+    const audit = createAuditEntry(
+      'CREATE',
+      'VENDOR',
+      vendor.vendorId,
+      vendor.name,
+      `Onboarded vendor ${vendor.name} (GSTIN: ${vendor.gstin || 'Unregistered'}, PAN: ${vendor.pan}) with KYC ${vendor.kyc?.status || 'Pending'}`,
+      [{ field: 'name', oldValue: null, newValue: vendor.name }],
+      'NOTICE'
+    );
+
+    const vendorEmail = vendor.email.trim().toLowerCase();
+    const newUser: UserProfile = {
+      id: `usr_${vendor.vendorId}`,
+      name: vendor.contactPerson || vendor.name,
+      email: vendorEmail,
+      role: 'VENDOR',
+      phone: vendor.phone,
+      linkedEntityId: vendor.id,
+      status: 'ACTIVE',
+      department: vendor.name,
+      password: (loginPassword && loginPassword.trim()) ? loginPassword.trim() : 'Jshine@2329',
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
     setState((prev) => ({
       ...prev,
       vendors: [vendor, ...prev.vendors],
+      users: [...prev.users.filter((u) => u.email.toLowerCase() !== newUser.email.toLowerCase() && u.linkedEntityId !== vendor.id && u.linkedEntityId !== vendor.vendorId), newUser],
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Vendor Partner Registered',
+          message: `${vendor.name} (${vendor.vendorId}) onboarded with active Portal Login.`,
+          type: 'success',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleUpdateVendor = (updatedVendor: Vendor) => {
+    const old = state.vendors.find((v) => v.vendorId === updatedVendor.vendorId || v.id === updatedVendor.id);
+    const audit = createAuditEntry(
+      'UPDATE',
+      'VENDOR',
+      updatedVendor.vendorId,
+      updatedVendor.name,
+      `Updated vendor profile & KYC for ${updatedVendor.name} (KYC: ${updatedVendor.kyc?.status || 'Pending'})`,
+      [
+        { field: 'kycStatus', oldValue: old?.kyc?.status, newValue: updatedVendor.kyc?.status },
+        { field: 'gstin', oldValue: old?.gstin, newValue: updatedVendor.gstin },
+      ],
+      'NOTICE'
+    );
+
+    setState((prev) => {
+      const newEmail = updatedVendor.email.trim().toLowerCase();
+      const updatedUsers = prev.users.map((u) => {
+        if (
+          u.linkedEntityId === updatedVendor.id ||
+          u.linkedEntityId === updatedVendor.vendorId ||
+          (old && (u.email.toLowerCase() === old.email.toLowerCase()))
+        ) {
+          return {
+            ...u,
+            name: updatedVendor.contactPerson || updatedVendor.name,
+            email: newEmail || u.email,
+            phone: updatedVendor.phone || u.phone,
+            department: updatedVendor.name,
+          };
+        }
+        return u;
+      });
+
+      return {
+        ...prev,
+        vendors: prev.vendors.map((v) => (v.id === updatedVendor.id || v.vendorId === updatedVendor.vendorId ? updatedVendor : v)),
+        users: updatedUsers,
+        auditLogs: [audit, ...prev.auditLogs],
+        notifications: [
+          {
+            id: `notif_${Date.now()}`,
+            title: 'Vendor Profile Updated',
+            message: `${updatedVendor.name} profile and KYC saved.`,
+            type: 'success',
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev.notifications,
+        ],
+      };
+    });
+  };
+
+  const handleDeleteVendor = (vendorId: string) => {
+    const v = state.vendors.find((item) => item.vendorId === vendorId);
+    const audit = createAuditEntry(
+      'DELETE',
+      'VENDOR',
+      vendorId,
+      v?.name || vendorId,
+      `Deactivated / Removed vendor partner ${v?.name || vendorId}`,
+      [{ field: 'status', oldValue: 'Active', newValue: 'Deactivated' }],
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      vendors: prev.vendors.filter((item) => item.vendorId !== vendorId),
+      users: prev.users.filter((u) => u.linkedEntityId !== vendorId),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'Vendor Partner Removed',
+          message: `${v?.name || vendorId} removed from repository.`,
+          type: 'info',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleUpdateEntityLoginCredentials = (
+    entityType: 'vendor' | 'auditor' | 'client',
+    entityId: string,
+    email: string,
+    password: string,
+    status: 'ACTIVE' | 'INACTIVE'
+  ) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim() || 'Jshine@2329';
+
+    let entityName = entityId;
+    let targetRole: 'VENDOR' | 'AUDITOR' | 'CLIENT' = 'VENDOR';
+    let resolvedEntityId = entityId;
+    let resolvedEntityCode = '';
+
+    if (entityType === 'vendor') {
+      const v = state.vendors.find(
+        (item) => item.id === entityId || item.vendorId === entityId || (item.email && item.email.toLowerCase() === cleanEmail)
+      );
+      entityName = v?.name || entityId;
+      targetRole = 'VENDOR';
+      if (v) {
+        resolvedEntityId = v.id;
+        resolvedEntityCode = v.vendorId;
+      }
+    } else if (entityType === 'auditor') {
+      const a = state.auditors.find(
+        (item) => item.id === entityId || item.auditorId === entityId || (item.email && item.email.toLowerCase() === cleanEmail)
+      );
+      entityName = a?.name || entityId;
+      targetRole = 'AUDITOR';
+      if (a) {
+        resolvedEntityId = a.id;
+        resolvedEntityCode = a.auditorId;
+      }
+    } else if (entityType === 'client') {
+      const c = state.clients.find(
+        (item) =>
+          item.id === entityId ||
+          item.clientId === entityId ||
+          ((item.contactEmail || item.email) && (item.contactEmail || item.email)?.toLowerCase() === cleanEmail)
+      );
+      entityName = c?.name || entityId;
+      targetRole = 'CLIENT';
+      if (c) {
+        resolvedEntityId = c.id;
+        resolvedEntityCode = c.clientId;
+      }
+    }
+
+    const audit = createAuditEntry(
+      'SECURITY_EVENT',
+      'SECURITY',
+      resolvedEntityId,
+      `Portal Credentials: ${entityName}`,
+      `Admin updated login credentials for ${entityType.toUpperCase()} ${entityName} (${cleanEmail}) - Status: ${status}`,
+      [
+        { field: 'email', oldValue: null, newValue: cleanEmail },
+        { field: 'status', oldValue: null, newValue: status },
+      ],
+      'HIGH'
+    );
+
+    setState((prev) => {
+      // Find matching user profile by linked ID, code, or existing email
+      const existingUserIndex = prev.users.findIndex(
+        (u) =>
+          u.linkedEntityId === resolvedEntityId ||
+          (resolvedEntityCode && u.linkedEntityId === resolvedEntityCode) ||
+          u.id === `usr_${resolvedEntityCode}` ||
+          u.id === `usr_${resolvedEntityId}` ||
+          (u.email && u.email.toLowerCase() === cleanEmail)
+      );
+
+      let updatedUsers = [...prev.users];
+      if (existingUserIndex >= 0) {
+        updatedUsers[existingUserIndex] = {
+          ...updatedUsers[existingUserIndex],
+          name: entityName || updatedUsers[existingUserIndex].name,
+          email: cleanEmail,
+          password: cleanPassword,
+          status,
+          role: targetRole,
+          linkedEntityId: resolvedEntityId,
+        };
+      } else {
+        const newUser: UserProfile = {
+          id: `usr_${resolvedEntityCode || resolvedEntityId || Date.now().toString(36)}`,
+          name: entityName,
+          email: cleanEmail,
+          role: targetRole,
+          status,
+          password: cleanPassword,
+          linkedEntityId: resolvedEntityId,
+          createdAt: new Date().toISOString().split('T')[0],
+        };
+        updatedUsers = [...updatedUsers, newUser];
+      }
+
+      // Keep vendor/auditor/client entity email in sync
+      let updatedVendors = prev.vendors;
+      let updatedAuditors = prev.auditors;
+      let updatedClients = prev.clients;
+
+      if (entityType === 'vendor') {
+        updatedVendors = prev.vendors.map((v) =>
+          v.id === resolvedEntityId || v.vendorId === resolvedEntityCode ? { ...v, email: cleanEmail } : v
+        );
+      } else if (entityType === 'auditor') {
+        updatedAuditors = prev.auditors.map((a) =>
+          a.id === resolvedEntityId || a.auditorId === resolvedEntityCode ? { ...a, email: cleanEmail } : a
+        );
+      } else if (entityType === 'client') {
+        updatedClients = prev.clients.map((c) =>
+          c.id === resolvedEntityId || c.clientId === resolvedEntityCode ? { ...c, contactEmail: cleanEmail, email: cleanEmail } : c
+        );
+      }
+
+      return {
+        ...prev,
+        users: updatedUsers,
+        vendors: updatedVendors,
+        auditors: updatedAuditors,
+        clients: updatedClients,
+        auditLogs: [audit, ...prev.auditLogs],
+        notifications: [
+          {
+            id: `notif_${Date.now()}`,
+            title: 'Portal Credentials Updated',
+            message: `Login credentials for ${entityName} (${cleanEmail}) saved with status ${status}. User can sign in immediately.`,
+            type: 'success',
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev.notifications,
+        ],
+      };
+    });
+  };
+
+  const handleChangeUserPassword = (userId: string, newPassword: string) => {
+    const cleanPwd = newPassword.trim();
+    const targetUser = state.users.find((u) => u.id === userId);
+    const audit = createAuditEntry(
+      'SECURITY_EVENT',
+      'SECURITY',
+      userId,
+      `User Password Reset: ${targetUser?.name || userId}`,
+      `Admin updated password for user ${targetUser?.name || userId} (${targetUser?.email || ''})`,
+      [{ field: 'password', oldValue: '••••••••', newValue: '•••••••• (Updated)' }],
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      users: prev.users.map((u) => (u.id === userId ? { ...u, password: cleanPwd } : u)),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'User Password Updated',
+          message: `Password for ${targetUser?.name || 'user'} (${targetUser?.email || ''}) updated and active.`,
+          type: 'success',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    const u = state.users.find((item) => item.id === userId);
+    const audit = createAuditEntry(
+      'DELETE',
+      'SECURITY',
+      userId,
+      u?.name || userId,
+      `Removed user account ${u?.name || userId} (${u?.email || ''})`,
+      undefined,
+      'HIGH'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      users: prev.users.filter((item) => item.id !== userId),
+      auditLogs: [audit, ...prev.auditLogs],
+      notifications: [
+        {
+          id: `notif_${Date.now()}`,
+          title: 'User Account Removed',
+          message: `${u?.name || userId} account deleted.`,
+          type: 'info',
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.notifications,
+      ],
+    }));
+  };
+
+  const handleUpdateLocationStatus = (locationId: string, status: LocationStatus, remarks?: string) => {
+    const loc = state.locations.find((l) => l.id === locationId);
+    const audit = createAuditEntry(
+      'UPDATE',
+      'LOCATION',
+      locationId,
+      loc?.storeName || locationId,
+      `Updated site status to ${status}${remarks ? `: ${remarks}` : ''}`,
+      [{ field: 'status', oldValue: loc?.status, newValue: status }],
+      'NOTICE'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      locations: prev.locations.map((l) =>
+        l.id === locationId
+          ? {
+              ...l,
+              status,
+              ...(status === 'Completed' ? { completedDate: new Date().toISOString().split('T')[0] } : {}),
+              ...(remarks ? { remarks: `${l.remarks ? l.remarks + ' | ' : ''}${remarks}` } : {}),
+            }
+          : l
+      ),
+      auditLogs: [audit, ...prev.auditLogs],
     }));
   };
 
@@ -883,14 +1778,165 @@ export default function App() {
     }));
   };
 
+  const handleResetPasswordDirect = (email: string, newPassword: string) => {
+    const matchedUser = state.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const audit = createAuditEntry(
+      'UPDATE',
+      'SECURITY',
+      matchedUser?.id || email,
+      matchedUser?.name || email,
+      `User password reset requested and updated for ${email}`,
+      undefined,
+      'NOTICE'
+    );
+
+    setState((prev) => ({
+      ...prev,
+      users: prev.users.map((u) =>
+        u.email.toLowerCase() === email.toLowerCase() ? { ...u, password: newPassword } : u
+      ),
+      adminPassword:
+        email.toLowerCase() === 'jay@jaysoftshine.com' ? newPassword : prev.adminPassword,
+      auditLogs: [audit, ...prev.auditLogs],
+    }));
+  };
+
+  const handleCompleteUrlPasswordReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetModalErrorMsg(null);
+    if (!resetUrlParams) return;
+
+    if (resetModalNewPassword.length < 6) {
+      setResetModalErrorMsg('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (resetModalNewPassword !== resetModalConfirmPassword) {
+      setResetModalErrorMsg('New password and confirmation do not match.');
+      return;
+    }
+
+    handleResetPasswordDirect(resetUrlParams.email, resetModalNewPassword);
+    setResetModalSuccessMsg(
+      'Your password has been successfully updated! You can now sign in using your new credentials.'
+    );
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => {
+      setResetUrlParams(null);
+      setResetModalSuccessMsg(null);
+      setResetModalNewPassword('');
+      setResetModalConfirmPassword('');
+    }, 2500);
+  };
+
   // If user is not authenticated, render Login Page as Home Screen
   if (!state.isAuthenticated) {
     return (
-      <LoginPage
-        onLogin={handleLogin}
-        users={state.users}
-        adminPassword={state.adminPassword}
-      />
+      <>
+        <LoginPage
+          onLogin={handleLogin}
+          users={state.users}
+          vendors={state.vendors}
+          auditors={state.auditors}
+          clients={state.clients}
+          adminPassword={state.adminPassword}
+          onResetPassword={handleResetPasswordDirect}
+          onProvisionEntityUser={(newUser) => {
+            setState((prev) => ({
+              ...prev,
+              users: [...prev.users.filter((u) => u.email.toLowerCase() !== newUser.email.toLowerCase() && u.id !== newUser.id), newUser],
+            }));
+          }}
+          cloudSyncStatus={cloudSyncStatus}
+          onSyncFromCloud={handleForceSync}
+        />
+
+        {/* Modal for reset link from email */}
+        {resetUrlParams && (
+          <Modal
+            isOpen={true}
+            onClose={() => {
+              setResetUrlParams(null);
+              window.history.replaceState({}, '', window.location.pathname);
+            }}
+            title="Set New Corporate Password"
+            maxWidth="sm"
+          >
+            <form onSubmit={handleCompleteUrlPasswordReset} className="space-y-4">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <span className="text-slate-500 font-medium block">Resetting Password For:</span>
+                <span className="font-bold text-slate-900 font-mono text-sm block mt-0.5">
+                  {resetUrlParams.email}
+                </span>
+                <span className="text-[11px] text-emerald-700 block mt-1 font-semibold">
+                  ✓ Verified one-time security reset token
+                </span>
+              </div>
+
+              {resetModalSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{resetModalSuccessMsg}</span>
+                </div>
+              )}
+
+              {resetModalErrorMsg && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{resetModalErrorMsg}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Choose New Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={resetModalNewPassword}
+                  onChange={(e) => setResetModalNewPassword(e.target.value)}
+                  placeholder="Enter min 6 characters"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={resetModalConfirmPassword}
+                  onChange={(e) => setResetModalConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 font-mono"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetUrlParams(null);
+                    window.history.replaceState({}, '', window.location.pathname);
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold bg-slate-950 hover:bg-black text-white rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save & Apply New Password
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
+      </>
     );
   }
 
@@ -947,6 +1993,9 @@ export default function App() {
           notifications={state.notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
           onLogout={handleLogout}
+          cloudSyncStatus={cloudSyncStatus}
+          onForceSync={handleForceSync}
+          isSyncing={isCloudSyncing}
         />
 
         {/* Dynamic View Container */}
@@ -985,7 +2034,18 @@ export default function App() {
                 <ClientsView
                   clients={state.clients}
                   onAddClient={handleAddClient}
-                  onUpdateClient={() => {}}
+                  onUpdateClient={handleUpdateClient}
+                />
+              )}
+
+              {currentTab === 'tax-clients' && (
+                <TaxClientsView
+                  taxClients={state.taxClients || []}
+                  vendors={state.vendors}
+                  onAddTaxClient={handleAddTaxClient}
+                  onUpdateTaxClient={handleUpdateTaxClient}
+                  onDeleteTaxClient={handleDeleteTaxClient}
+                  canManage={state.currentUser.role === 'SUPER_ADMIN' || state.currentUser.role === 'ADMIN' || state.currentUser.role === 'ACCOUNTS' || state.currentUser.role === 'OFFICE_ADMIN'}
                 />
               )}
 
@@ -993,6 +2053,8 @@ export default function App() {
                 <ProjectsView
                   projects={state.projects}
                   clients={state.clients}
+                  vendors={state.vendors}
+                  auditors={state.auditors}
                   locations={state.locations}
                   assignments={state.assignments}
                   attendance={state.attendance}
@@ -1034,7 +2096,7 @@ export default function App() {
                 <WorkforceAuditorsView
                   auditors={state.auditors}
                   onAddAuditor={handleAddAuditor}
-                  onUpdateAuditor={() => {}}
+                  onUpdateAuditor={handleUpdateAuditor}
                 />
               )}
 
@@ -1043,7 +2105,7 @@ export default function App() {
                   vendors={state.vendors}
                   vendorBills={state.vendorBills}
                   onAddVendor={handleAddVendor}
-                  onUpdateVendor={() => {}}
+                  onUpdateVendor={handleUpdateVendor}
                 />
               )}
 
@@ -1067,7 +2129,7 @@ export default function App() {
                   projects={state.projects}
                   auditors={state.auditors}
                   onAddReport={handleAddReport}
-                  onUpdateLocationStatus={() => {}}
+                  onUpdateLocationStatus={handleUpdateLocationStatus}
                 />
               )}
 
@@ -1170,6 +2232,8 @@ export default function App() {
                   onSwitchUser={handleSwitchUser}
                   onAddUser={handleAddUser}
                   onUpdateUser={handleUpdateUser}
+                  onDeleteUser={handleDeleteUser}
+                  onChangeUserPassword={handleChangeUserPassword}
                   onUpdateRolePermissions={handleUpdateRolePermissions}
                   onResetRolePermissions={handleResetRolePermissions}
                 />
@@ -1181,6 +2245,8 @@ export default function App() {
                   onSaveSmtp={handleSaveSmtp}
                   adminPassword={state.adminPassword}
                   onPasswordChange={handlePasswordChange}
+                  organization={state.organization}
+                  onUpdateOrganization={handleUpdateOrganization}
                 />
               )}
 
@@ -1190,6 +2256,22 @@ export default function App() {
                   portalType="vendor"
                   state={state}
                   onNavigate={(tab) => setCurrentTab(tab)}
+                  onAddVendor={handleAddVendor}
+                  onUpdateVendor={handleUpdateVendor}
+                  onDeleteVendor={handleDeleteVendor}
+                  onAddAuditor={handleAddAuditor}
+                  onUpdateAuditor={handleUpdateAuditor}
+                  onDeleteAuditor={handleDeleteAuditor}
+                  onAddClient={handleAddClient}
+                  onUpdateClient={handleUpdateClient}
+                  onDeleteClient={handleDeleteClient}
+                  onUpdateEntityLoginCredentials={handleUpdateEntityLoginCredentials}
+                  onUpdateLocationStatus={handleUpdateLocationStatus}
+                  onSubmitVendorBill={handleAddVendorBill}
+                  onSubmitAttendance={handleAddAttendance}
+                  onSubmitReport={handleAddReport}
+                  onSubmitExpense={handleAddExpense}
+                  onSwitchUser={handleSwitchUser}
                 />
               )}
 
@@ -1198,6 +2280,22 @@ export default function App() {
                   portalType="auditor"
                   state={state}
                   onNavigate={(tab) => setCurrentTab(tab)}
+                  onAddVendor={handleAddVendor}
+                  onUpdateVendor={handleUpdateVendor}
+                  onDeleteVendor={handleDeleteVendor}
+                  onAddAuditor={handleAddAuditor}
+                  onUpdateAuditor={handleUpdateAuditor}
+                  onDeleteAuditor={handleDeleteAuditor}
+                  onAddClient={handleAddClient}
+                  onUpdateClient={handleUpdateClient}
+                  onDeleteClient={handleDeleteClient}
+                  onUpdateEntityLoginCredentials={handleUpdateEntityLoginCredentials}
+                  onUpdateLocationStatus={handleUpdateLocationStatus}
+                  onSubmitVendorBill={handleAddVendorBill}
+                  onSubmitAttendance={handleAddAttendance}
+                  onSubmitReport={handleAddReport}
+                  onSubmitExpense={handleAddExpense}
+                  onSwitchUser={handleSwitchUser}
                 />
               )}
 
@@ -1206,6 +2304,22 @@ export default function App() {
                   portalType="client"
                   state={state}
                   onNavigate={(tab) => setCurrentTab(tab)}
+                  onAddVendor={handleAddVendor}
+                  onUpdateVendor={handleUpdateVendor}
+                  onDeleteVendor={handleDeleteVendor}
+                  onAddAuditor={handleAddAuditor}
+                  onUpdateAuditor={handleUpdateAuditor}
+                  onDeleteAuditor={handleDeleteAuditor}
+                  onAddClient={handleAddClient}
+                  onUpdateClient={handleUpdateClient}
+                  onDeleteClient={handleDeleteClient}
+                  onUpdateEntityLoginCredentials={handleUpdateEntityLoginCredentials}
+                  onUpdateLocationStatus={handleUpdateLocationStatus}
+                  onSubmitVendorBill={handleAddVendorBill}
+                  onSubmitAttendance={handleAddAttendance}
+                  onSubmitReport={handleAddReport}
+                  onSubmitExpense={handleAddExpense}
+                  onSwitchUser={handleSwitchUser}
                 />
               )}
             </>

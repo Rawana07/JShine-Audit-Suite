@@ -26,6 +26,7 @@ import {
   LogOut,
   Shield,
   User,
+  FileCheck2,
 } from 'lucide-react';
 import { UserRole } from '../../types/erp';
 import type { NavTabId } from '../../types/erp';
@@ -75,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'clients', label: 'CRM & Clients', icon: Users2 },
+        { id: 'tax-clients', label: 'ITR & GST Clients', icon: FileCheck2, tag: 'Utility' },
         { id: 'projects', label: 'Projects', icon: FolderGit2, badge: 'Scenarios A/B/C' },
         { id: 'locations', label: 'Locations Master', icon: MapPin },
         { id: 'assignments', label: 'Assignments Engine', icon: FileCheck },

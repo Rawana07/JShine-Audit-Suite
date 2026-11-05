@@ -29,9 +29,12 @@ import {
   AuditorSettlement,
   ExpenseRecord,
   Client,
+  Vendor,
+  Auditor,
   ProjectCategory,
   ExecutionModel,
   AuditLogEntry,
+  ProjectSyncConfig,
 } from '../../types/erp';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
@@ -41,6 +44,8 @@ import { NavTabId } from '../common/Sidebar';
 interface ProjectsViewProps {
   projects: Project[];
   clients: Client[];
+  vendors?: Vendor[];
+  auditors?: Auditor[];
   locations: ProjectLocation[];
   assignments: Assignment[];
   attendance: AttendanceRecord[];
@@ -51,7 +56,7 @@ interface ProjectsViewProps {
   expenses: ExpenseRecord[];
   auditLogs?: AuditLogEntry[];
   initialSelectedProjectId?: string | null;
-  onAddProject: (project: Project) => void;
+  onAddProject: (project: Project, syncConfig?: ProjectSyncConfig) => void;
   onDeleteProject?: (projectId: string) => void;
   onNavigate: (tab: NavTabId, entityId?: string) => void;
 }
@@ -59,6 +64,8 @@ interface ProjectsViewProps {
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
   projects,
   clients,
+  vendors = [],
+  auditors = [],
   locations,
   assignments,
   attendance,
@@ -84,7 +91,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     'overview' | 'locations' | 'assignments' | 'attendance' | 'reports' | 'invoices' | 'payables' | 'profitability' | 'audit'
   >('overview');
 
-  // Form State
+  // Form State with Multi-Entity Commercial Sync
   const [newProject, setNewProject] = useState({
     name: '',
     clientId: clients[0]?.id || '',
@@ -94,10 +101,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
     totalLocations: 5,
-    estimatedMandays: 5,
-    clientRatePerManday: 1500,
-    budget: 7500,
-    instructions: '',
+    mandaysPerLocation: 2,
+    clientRatePerManday: 1800,
+    assignedAuditorId: auditors[0]?.id || '',
+    assignedVendorId: vendors[0]?.id || '',
+    executionCostRate: auditors[0]?.defaultDayRate || 1000,
+    cityList: 'Mumbai, Pune, Ahmedabad, Jaipur, Delhi NCR',
+    instructions: '100% itemized verification, barcode scan count, discrepancy verification and sign-off.',
+    autoGenerateLocations: true,
+    autoGenerateWorkOrder: true,
   });
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
@@ -117,6 +129,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const projectId = `JSS-2026-${String(nextSeq).padStart(4, '0')}`;
     const selectedClient = clients.find((c) => c.id === newProject.clientId);
 
+    const locCount = Math.max(1, Number(newProject.totalLocations) || 1);
+    const mandaysPerLoc = Math.max(1, Number(newProject.mandaysPerLocation) || 1);
+    const totalMandays = locCount * mandaysPerLoc;
+    const clientRate = Math.max(1, Number(newProject.clientRatePerManday) || 1500);
+    const execRate = Math.max(0, Number(newProject.executionCostRate) || 1000);
+    const totalRevenue = totalMandays * clientRate;
+
+    // Resolve assigned entity
+    let assignedId = '';
+    let assignedName = '';
+    if (newProject.executionModel === 'DIRECT') {
+      const aud = auditors.find((a) => a.id === newProject.assignedAuditorId) || auditors[0];
+      assignedId = aud ? aud.id : '';
+      assignedName = aud ? aud.name : 'Field Auditor';
+    } else if (newProject.executionModel === 'VENDOR') {
+      const vnd = vendors.find((v) => v.id === newProject.assignedVendorId) || vendors[0];
+      assignedId = vnd ? vnd.id : '';
+      assignedName = vnd ? vnd.name : 'Vendor Partner';
+    } else {
+      const vnd = vendors.find((v) => v.id === newProject.assignedVendorId) || vendors[0];
+      assignedId = vnd ? vnd.id : (auditors[0]?.id || '');
+      assignedName = vnd ? vnd.name : (auditors[0]?.name || 'Hybrid Partner');
+    }
+
     const project: Project = {
       id: `prj_${Date.now()}`,
       projectId,
@@ -128,18 +164,29 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       executionModel: newProject.executionModel,
       startDate: newProject.startDate,
       endDate: newProject.endDate,
-      totalLocations: Number(newProject.totalLocations),
-      estimatedMandays: Number(newProject.estimatedMandays),
-      clientRatePerManday: Number(newProject.clientRatePerManday),
+      totalLocations: locCount,
+      estimatedMandays: totalMandays,
+      clientRatePerManday: clientRate,
       billingType: 'Per Manday',
       gstRatePercent: 18,
-      budget: Number(newProject.budget),
+      budget: totalRevenue,
       instructions: newProject.instructions,
       status: 'Active',
       createdAt: new Date().toISOString(),
     };
 
-    onAddProject(project);
+    const syncConfig: ProjectSyncConfig = {
+      assignedEntityId: assignedId,
+      assignedEntityName: assignedName,
+      assignedType: newProject.executionModel === 'VENDOR' ? 'VENDOR' : 'AUDITOR',
+      executionCostRate: execRate,
+      mandaysPerLocation: mandaysPerLoc,
+      cities: newProject.cityList.split(',').map((c) => c.trim()).filter(Boolean),
+      autoGenerateLocations: newProject.autoGenerateLocations,
+      autoGenerateAssignment: newProject.autoGenerateWorkOrder,
+    };
+
+    onAddProject(project, syncConfig);
     setIsAddModalOpen(false);
     setSelectedProjectId(project.id);
   };
@@ -704,7 +751,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Client <span className="text-rose-500">*</span>
+                Corporate Client <span className="text-rose-500">*</span>
               </label>
               <select
                 required
@@ -760,14 +807,111 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </label>
               <select
                 value={newProject.executionModel}
-                onChange={(e) => setNewProject({ ...newProject, executionModel: e.target.value as any })}
+                onChange={(e) => {
+                  const model = e.target.value as ExecutionModel;
+                  let defaultRate = newProject.executionCostRate;
+                  if (model === 'DIRECT') {
+                    const aud = auditors.find((a) => a.id === newProject.assignedAuditorId) || auditors[0];
+                    defaultRate = aud?.defaultDayRate || 1000;
+                  } else if (model === 'VENDOR') {
+                    const vnd = vendors.find((v) => v.id === newProject.assignedVendorId) || vendors[0];
+                    defaultRate = vnd?.defaultDayRate || 1200;
+                  }
+                  setNewProject({ ...newProject, executionModel: model, executionCostRate: defaultRate });
+                }}
                 className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none bg-white"
               >
-                <option value="DIRECT">Scenario A: Direct Auditor Assignment</option>
-                <option value="VENDOR">Scenario B: Complete Vendor Outsourcing</option>
-                <option value="HYBRID">Scenario C: Hybrid Execution</option>
+                <option value="DIRECT">Scenario A: Direct Auditor Assignment (In-house)</option>
+                <option value="VENDOR">Scenario B: Complete Vendor Outsourcing (Partner Agency)</option>
+                <option value="HYBRID">Scenario C: Hybrid Execution (Outsourced + Direct)</option>
               </select>
             </div>
+
+            {/* Execution Partner Selection */}
+            {newProject.executionModel === 'DIRECT' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Assign Lead Field Auditor <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newProject.assignedAuditorId}
+                  onChange={(e) => {
+                    const aud = auditors.find((a) => a.id === e.target.value);
+                    setNewProject({
+                      ...newProject,
+                      assignedAuditorId: e.target.value,
+                      executionCostRate: aud?.defaultDayRate || newProject.executionCostRate,
+                    });
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none bg-white"
+                >
+                  {auditors.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.city || 'HQ'} – ₹{a.defaultDayRate}/day)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {newProject.executionModel === 'VENDOR' && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Assign Vendor Partner <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newProject.assignedVendorId}
+                  onChange={(e) => {
+                    const vnd = vendors.find((v) => v.id === e.target.value);
+                    setNewProject({
+                      ...newProject,
+                      assignedVendorId: e.target.value,
+                      executionCostRate: vnd?.defaultDayRate || newProject.executionCostRate,
+                    });
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none bg-white"
+                >
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.state} – ₹{v.defaultDayRate}/day)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {newProject.executionModel === 'HYBRID' && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Primary Vendor Agency</label>
+                  <select
+                    value={newProject.assignedVendorId}
+                    onChange={(e) => setNewProject({ ...newProject, assignedVendorId: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none bg-white"
+                  >
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.state})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Oversight Auditor</label>
+                  <select
+                    value={newProject.assignedAuditorId}
+                    onChange={(e) => setNewProject({ ...newProject, assignedAuditorId: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none bg-white"
+                  >
+                    {auditors.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.city || 'HQ'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date</label>
@@ -792,12 +936,25 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Total Locations</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Total Site Locations</label>
               <input
                 type="number"
                 min={1}
+                required
                 value={newProject.totalLocations}
                 onChange={(e) => setNewProject({ ...newProject, totalLocations: Number(e.target.value) })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Mandays Per Location</label>
+              <input
+                type="number"
+                min={1}
+                required
+                value={newProject.mandaysPerLocation}
+                onChange={(e) => setNewProject({ ...newProject, mandaysPerLocation: Number(e.target.value) })}
                 className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none"
               />
             </div>
@@ -809,10 +966,126 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <input
                 type="number"
                 min={100}
+                required
                 value={newProject.clientRatePerManday}
                 onChange={(e) => setNewProject({ ...newProject, clientRatePerManday: Number(e.target.value) })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none font-semibold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Partner / Auditor Cost Rate (₹ / Manday) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                min={100}
+                required
+                value={newProject.executionCostRate}
+                onChange={(e) => setNewProject({ ...newProject, executionCostRate: Number(e.target.value) })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none font-semibold text-slate-900"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Target Cities / Distribution Hubs (Comma Separated)
+              </label>
+              <input
+                type="text"
+                value={newProject.cityList}
+                onChange={(e) => setNewProject({ ...newProject, cityList: e.target.value })}
+                placeholder="Mumbai, Pune, Ahmedabad, Jaipur, Delhi NCR"
                 className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none"
               />
+            </div>
+
+            {/* Live Synchronized Commercial & Profitability Preview */}
+            <div className="sm:col-span-2 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+                <span className="flex items-center gap-1.5">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  Live Commercial & Profitability Sync Preview
+                </span>
+                <span className="text-[11px] font-mono font-medium px-2 py-0.5 bg-slate-200 rounded text-slate-700">
+                  Total Mandays: {Number(newProject.totalLocations) * Number(newProject.mandaysPerLocation || 1)} Days
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Client Revenue (Fees)</div>
+                  <div className="text-sm font-bold text-slate-900">
+                    {formatINR(
+                      Number(newProject.totalLocations) *
+                        Number(newProject.mandaysPerLocation || 1) *
+                        Number(newProject.clientRatePerManday || 0)
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Direct Execution Cost</div>
+                  <div className="text-sm font-bold text-rose-600">
+                    {formatINR(
+                      Number(newProject.totalLocations) *
+                        Number(newProject.mandaysPerLocation || 1) *
+                        Number(newProject.executionCostRate || 0)
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Gross Margin</div>
+                  <div className="text-sm font-bold text-emerald-600">
+                    {formatINR(
+                      Number(newProject.totalLocations) *
+                        Number(newProject.mandaysPerLocation || 1) *
+                        (Number(newProject.clientRatePerManday || 0) - Number(newProject.executionCostRate || 0))
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Projected Margin %</div>
+                  <div className="text-sm font-bold text-indigo-600">
+                    {newProject.clientRatePerManday > 0
+                      ? (
+                          ((Number(newProject.clientRatePerManday) - Number(newProject.executionCostRate)) /
+                            Number(newProject.clientRatePerManday)) *
+                          100
+                        ).toFixed(1)
+                      : 0}
+                    %
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-600">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>
+                  Immediate Multi-Way Sync: Creating this project automatically generates official locations in the Site Master, assigns the Work Order, and synchronizes live with the Vendor Portal, Auditor Field App, and Client Portal.
+                </span>
+              </div>
+            </div>
+
+            <div className="sm:col-span-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoSyncCheck"
+                checked={newProject.autoGenerateLocations}
+                onChange={(e) =>
+                  setNewProject({
+                    ...newProject,
+                    autoGenerateLocations: e.target.checked,
+                    autoGenerateWorkOrder: e.target.checked,
+                  })
+                }
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+              />
+              <label htmlFor="autoSyncCheck" className="text-xs font-medium text-slate-700 cursor-pointer">
+                Auto-generate and allocate site locations with work order assignment (Recommended)
+              </label>
             </div>
 
             <div className="sm:col-span-2">
@@ -837,9 +1110,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-black transition-colors"
+              className="rounded-lg bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-black transition-colors"
             >
-              Create Project
+              Create & Sync Project
             </button>
           </div>
         </form>

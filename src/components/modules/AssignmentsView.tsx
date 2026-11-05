@@ -606,7 +606,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
                 <h1 className="text-xl font-bold tracking-tight text-slate-950">JAYSOFTSHINE</h1>
                 <p className="text-[11px] text-slate-600 font-medium">Audit & Operations Outsourcing Division</p>
                 <p className="text-[10px] text-slate-500">
-                  GSTIN: 27AAACJ2329J1Z4 • PAN: AAACJ2329J • Mumbai, Maharashtra
+                  GSTIN: 08BKDPV7945P1Z2 • PAN: BKDPV7945P • Jaipur, Rajasthan
                 </p>
               </div>
               <div className="text-right">

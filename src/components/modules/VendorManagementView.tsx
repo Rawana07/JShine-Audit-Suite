@@ -10,6 +10,9 @@ import {
   Star,
   FileText,
   ShieldAlert,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Vendor, VendorBill } from '../../types/erp';
 import { StatusBadge } from '../common/StatusBadge';
@@ -19,7 +22,7 @@ import { formatINR } from '../../utils/rules';
 interface VendorManagementViewProps {
   vendors: Vendor[];
   vendorBills: VendorBill[];
-  onAddVendor: (vendor: Vendor) => void;
+  onAddVendor: (vendor: Vendor, loginPassword?: string) => void;
   onUpdateVendor: (vendor: Vendor) => void;
 }
 
@@ -32,6 +35,7 @@ export const VendorManagementView: React.FC<VendorManagementViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeVendor, setActiveVendor] = useState<Vendor | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Form State
   const [form, setForm] = useState({
@@ -40,6 +44,7 @@ export const VendorManagementView: React.FC<VendorManagementViewProps> = ({
     contactPerson: '',
     phone: '',
     email: '',
+    password: 'Jshine@2329',
     pan: '',
     gstin: '',
     address: '',
@@ -88,7 +93,7 @@ export const VendorManagementView: React.FC<VendorManagementViewProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    onAddVendor(newVendor);
+    onAddVendor(newVendor, form.password || 'Jshine@2329');
     setIsAddModalOpen(false);
   };
 
@@ -287,6 +292,41 @@ export const VendorManagementView: React.FC<VendorManagementViewProps> = ({
                 placeholder="+91 98200 77665"
                 className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs focus:border-slate-900 focus:outline-none"
               />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-semibold text-slate-700">Portal Login Password</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                    let code = '';
+                    for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+                    setForm({ ...form, password: `JSS#${code}!${Math.floor(100 + Math.random() * 900)}` });
+                  }}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                >
+                  Generate Strong
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="Portal login password"
+                  className="w-full font-mono rounded-lg border border-slate-300 pl-3 pr-8 py-1.5 text-xs focus:border-slate-900 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
 
             <div>

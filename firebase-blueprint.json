@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account with role-based access and authentication credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "linkedEntityId": { "type": "string" },
+        "department": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "status"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Outsourced vendor partner entity and KYC",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "name": { "type": "string" },
+        "legalName": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "pan": { "type": "string" },
+        "gstin": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] }
+      },
+      "required": ["id", "vendorId", "name", "email", "pan"]
+    },
+    "Auditor": {
+      "title": "Auditor",
+      "description": "Direct field auditor associate profile and KYC",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "auditorId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "pan": { "type": "string" },
+        "defaultDayRate": { "type": "number" },
+        "skills": { "type": "array" }
+      },
+      "required": ["id", "auditorId", "name", "email", "pan"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Corporate client profile and commercial terms",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "name": { "type": "string" },
+        "pan": { "type": "string" },
+        "gstin": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] }
+      },
+      "required": ["id", "clientId", "name", "pan"]
+    },
+    "ERPState": {
+      "title": "ERPState",
+      "description": "Shared cloud state container for JaySoftShine ERP",
+      "type": "object",
+      "properties": {
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/erp_system/{documentId}": {
+      "schema": { "$ref": "#/entities/ERPState" },
+      "description": "Cloud synchronized ERP state partitions across all devices"
+    },
+    "/erp_users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Individual user accounts and login credentials"
+    }
+  }
+}

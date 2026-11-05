@@ -22,6 +22,7 @@ import {
   Send,
   CreditCard,
   Building,
+  Building2,
   RefreshCw,
 } from 'lucide-react';
 import { UserProfile, UserRole, NavTabId, RolePermissionConfig, BankDetails } from '../../types/erp';
@@ -46,6 +47,7 @@ interface UserManagementViewProps {
 const ALL_MODULES: { id: NavTabId; label: string; category: string }[] = [
   { id: 'dashboard', label: 'Dashboard', category: 'Core' },
   { id: 'clients', label: 'CRM & Clients', category: 'Core' },
+  { id: 'tax-clients', label: 'ITR & GST Clients Utility', category: 'Core' },
   { id: 'projects', label: 'Projects', category: 'Core' },
   { id: 'locations', label: 'Locations Master', category: 'Core' },
   { id: 'assignments', label: 'Assignments Engine', category: 'Core' },
@@ -85,6 +87,17 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
+
+  const filteredUsers = users.filter((u: UserProfile) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.department && u.department.toLowerCase().includes(q)) ||
+      (u.phone && u.phone.includes(q));
+    const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   // Modals state
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -168,14 +181,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           department: user.department,
         });
         if (mailRes.success) {
-          const note = mailRes.sandboxDeliveredTo ? ` (delivered to ${mailRes.sandboxDeliveredTo})` : '';
+          const note = mailRes.senderEmail ? ` via Google Workspace Gmail (${mailRes.senderEmail})` : '';
           setEmailNotice({
-            message: `Welcome credentials email successfully delivered to ${user.email}${note}!`,
+            message: `Welcome credentials email successfully dispatched to ${user.email}${note}!`,
             type: 'success',
           });
         } else {
           setEmailNotice({
-            message: `User created. Note: Mail delivery notice: ${mailRes.error || 'Pending custom domain in Resend'}`,
+            message: `User created. Note: Mail delivery notice: ${mailRes.error || 'Awaiting Google authorization'}`,
             type: 'error',
           });
         }
@@ -201,14 +214,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         department: user.department,
       });
       if (mailRes.success) {
-        const note = mailRes.sandboxDeliveredTo ? ` (Delivered to Resend account ${mailRes.sandboxDeliveredTo})` : '';
+        const note = mailRes.senderEmail ? ` via Google Workspace Gmail (${mailRes.senderEmail})` : '';
         setEmailNotice({
           message: `Welcome email with login credentials sent to ${user.email}${note}!`,
           type: 'success',
         });
       } else {
         setEmailNotice({
-          message: `Mail status: ${mailRes.error || 'Resend queued'}`,
+          message: `Mail status: ${mailRes.error || 'Failed to dispatch via Gmail'}`,
           type: 'error',
         });
       }
@@ -250,9 +263,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           email: targetEmail,
           newPassword: newPwd,
         });
-        const note = mailRes.sandboxDeliveredTo ? ` (delivered to ${mailRes.sandboxDeliveredTo})` : '';
+        const note = mailRes.senderEmail ? ` from ${mailRes.senderEmail}` : '';
         setEmailNotice({
-          message: `Password updated and dispatched to ${targetEmail}${note}!`,
+          message: `Password updated and dispatched to ${targetEmail} via Google Workspace Gmail${note}! For security, passwords are never shown on screen.`,
           type: 'success',
         });
       } catch (err: any) {
@@ -264,7 +277,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       setTimeout(() => setEmailNotice(null), 6000);
     } else {
       setEmailNotice({
-        message: `Password for ${targetName} updated to "${newPwd}"!`,
+        message: `Password for ${targetName} updated successfully! For security compliance, passwords are never shown on screen.`,
         type: 'success',
       });
       setTimeout(() => setEmailNotice(null), 5000);

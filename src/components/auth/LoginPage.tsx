@@ -18,21 +18,34 @@ import {
   Send,
   ArrowLeft,
 } from 'lucide-react';
-import { UserProfile, UserRole } from '../../types/erp';
+import { UserProfile, UserRole, Vendor, Auditor, Client } from '../../types/erp';
 import { sendPasswordResetEmail } from '../../services/emailService';
+import { fetchLatestCloudAuthData, CloudSyncStatus } from '../../services/cloudDb';
 
 interface LoginPageProps {
   onLogin: (user: UserProfile) => void;
   users: UserProfile[];
+  vendors?: Vendor[];
+  auditors?: Auditor[];
+  clients?: Client[];
   adminPassword: string; // Dynamic admin password
   onResetPassword?: (email: string, newPassword: string) => void;
+  onProvisionEntityUser?: (newUser: UserProfile) => void;
+  cloudSyncStatus?: CloudSyncStatus;
+  onSyncFromCloud?: () => Promise<void>;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   onLogin,
   users,
+  vendors = [],
+  auditors = [],
+  clients = [],
   adminPassword,
   onResetPassword,
+  onProvisionEntityUser,
+  cloudSyncStatus,
+  onSyncFromCloud,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +54,52 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
+  // Live cloud auth cache
+  const [cloudUsers, setCloudUsers] = useState<UserProfile[]>(users);
+  const [cloudVendors, setCloudVendors] = useState<Vendor[]>(vendors);
+  const [cloudAuditors, setCloudAuditors] = useState<Auditor[]>(auditors);
+  const [cloudClients, setCloudClients] = useState<Client[]>(clients);
+  const [cloudAdminPw, setCloudAdminPw] = useState<string>(adminPassword);
+
+  // Keep state updated when props change
+  React.useEffect(() => {
+    setCloudUsers(users);
+  }, [users]);
+  React.useEffect(() => {
+    setCloudVendors(vendors);
+  }, [vendors]);
+  React.useEffect(() => {
+    setCloudAuditors(auditors);
+  }, [auditors]);
+  React.useEffect(() => {
+    setCloudClients(clients);
+  }, [clients]);
+  React.useEffect(() => {
+    setCloudAdminPw(adminPassword);
+  }, [adminPassword]);
+
+  // On mount, fetch fresh cloud database credentials to ensure any new account added from another device is recognized
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const fresh = await fetchLatestCloudAuthData();
+        if (fresh && active) {
+          if (fresh.users) setCloudUsers(fresh.users);
+          if (fresh.vendors) setCloudVendors(fresh.vendors);
+          if (fresh.auditors) setCloudAuditors(fresh.auditors);
+          if (fresh.clients) setCloudClients(fresh.clients);
+          if (fresh.adminPassword) setCloudAdminPw(fresh.adminPassword);
+        }
+      } catch (e) {
+        console.warn('Initial cloud auth sync notice:', e);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Forgot Password State
   const [isForgotView, setIsForgotView] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -48,46 +107,239 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [forgotError, setForgotError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Helper to resolve an account from Email, Phone (+91/digits), or Entity ID / Code
+  const resolveUserAccount = (
+    identifier: string,
+    overrideData?: {
+      users?: UserProfile[];
+      vendors?: Vendor[];
+      auditors?: Auditor[];
+      clients?: Client[];
+    }
+  ): UserProfile | null => {
+    const clean = identifier.trim();
+    if (!clean) return null;
+    const cleanLower = clean.toLowerCase();
+    const digitsOnly = clean.replace(/\D/g, '');
+
+    const userList = overrideData?.users || cloudUsers;
+    const auditorList = overrideData?.auditors || cloudAuditors;
+    const vendorList = overrideData?.vendors || cloudVendors;
+    const clientList = overrideData?.clients || cloudClients;
+
+    // 1. Direct match in users list by email
+    let found = userList.find((u) => u.email.toLowerCase() === cleanLower);
+    if (found) return found;
+
+    // 2. Match in users list by phone
+    if (digitsOnly.length >= 10) {
+      found = userList.find((u) => u.phone && u.phone.replace(/\D/g, '').endsWith(digitsOnly.slice(-10)));
+      if (found) return found;
+    }
+
+    // 3. Match in users list by user id or linkedEntityId
+    found = userList.find(
+      (u) =>
+        u.id.toLowerCase() === cleanLower ||
+        (u.linkedEntityId && u.linkedEntityId.toLowerCase() === cleanLower)
+    );
+    if (found) return found;
+
+    // 4. Search in Auditors master (by ID, Code, Email, or Phone)
+    const matchedAuditor = auditorList.find((a) => {
+      const matchId = a.auditorId.toLowerCase() === cleanLower || a.id.toLowerCase() === cleanLower;
+      const matchEmail = a.email && a.email.toLowerCase() === cleanLower;
+      const matchPhone = digitsOnly.length >= 10 && a.phone && a.phone.replace(/\D/g, '').endsWith(digitsOnly.slice(-10));
+      return matchId || matchEmail || matchPhone;
+    });
+
+    if (matchedAuditor) {
+      // Check if user already exists for this auditor
+      const existing = userList.find(
+        (u) =>
+          u.linkedEntityId === matchedAuditor.id ||
+          u.linkedEntityId === matchedAuditor.auditorId ||
+          (u.email && matchedAuditor.email && u.email.toLowerCase() === matchedAuditor.email.toLowerCase())
+      );
+      if (existing) return existing;
+
+      // Auto-provision user account
+      const newAuditorUser: UserProfile = {
+        id: `usr_${matchedAuditor.auditorId}`,
+        name: matchedAuditor.name,
+        email: matchedAuditor.email,
+        role: 'AUDITOR',
+        phone: matchedAuditor.phone,
+        linkedEntityId: matchedAuditor.id,
+        status: 'ACTIVE',
+        department: 'Field Audit Associate',
+        password: 'Jshine@2329',
+        createdAt: matchedAuditor.createdAt || new Date().toISOString(),
+      };
+      if (onProvisionEntityUser) onProvisionEntityUser(newAuditorUser);
+      return newAuditorUser;
+    }
+
+    // 5. Search in Vendors master (by ID, Code, Email, or Phone)
+    const matchedVendor = vendorList.find((v) => {
+      const matchId = v.vendorId.toLowerCase() === cleanLower || v.id.toLowerCase() === cleanLower;
+      const matchEmail = v.email && v.email.toLowerCase() === cleanLower;
+      const matchPhone = digitsOnly.length >= 10 && v.phone && v.phone.replace(/\D/g, '').endsWith(digitsOnly.slice(-10));
+      return matchId || matchEmail || matchPhone;
+    });
+
+    if (matchedVendor) {
+      const existing = userList.find(
+        (u) =>
+          u.linkedEntityId === matchedVendor.id ||
+          u.linkedEntityId === matchedVendor.vendorId ||
+          (u.email && matchedVendor.email && u.email.toLowerCase() === matchedVendor.email.toLowerCase())
+      );
+      if (existing) return existing;
+
+      const newVendorUser: UserProfile = {
+        id: `usr_${matchedVendor.vendorId}`,
+        name: matchedVendor.contactPerson || matchedVendor.name,
+        email: matchedVendor.email,
+        role: 'VENDOR',
+        phone: matchedVendor.phone,
+        linkedEntityId: matchedVendor.id,
+        status: 'ACTIVE',
+        department: matchedVendor.name,
+        password: 'Jshine@2329',
+        createdAt: matchedVendor.createdAt || new Date().toISOString(),
+      };
+      if (onProvisionEntityUser) onProvisionEntityUser(newVendorUser);
+      return newVendorUser;
+    }
+
+    // 6. Search in Clients master (by ID, Code, Email, or Phone)
+    const matchedClient = clientList.find((c) => {
+      const matchId = c.clientId.toLowerCase() === cleanLower || c.id.toLowerCase() === cleanLower;
+      const matchEmail =
+        (c.contactEmail && c.contactEmail.toLowerCase() === cleanLower) ||
+        (c.email && c.email.toLowerCase() === cleanLower);
+      const matchPhone =
+        digitsOnly.length >= 10 &&
+        ((c.contactPhone && c.contactPhone.replace(/\D/g, '').endsWith(digitsOnly.slice(-10))) ||
+          (c.phone && c.phone.replace(/\D/g, '').endsWith(digitsOnly.slice(-10))));
+      return matchId || matchEmail || matchPhone;
+    });
+
+    if (matchedClient) {
+      const cEmail = matchedClient.contactEmail || matchedClient.email || `${matchedClient.clientId.toLowerCase()}@clientportal.com`;
+      const existing = userList.find(
+        (u) =>
+          u.linkedEntityId === matchedClient.id ||
+          u.linkedEntityId === matchedClient.clientId ||
+          (u.email && u.email.toLowerCase() === cEmail.toLowerCase())
+      );
+      if (existing) return existing;
+
+      const newClientUser: UserProfile = {
+        id: `usr_${matchedClient.clientId}`,
+        name: matchedClient.contactPerson || matchedClient.name,
+        email: cEmail,
+        role: 'CLIENT',
+        phone: matchedClient.contactPhone || matchedClient.phone || '+91 98200 00000',
+        linkedEntityId: matchedClient.id,
+        status: 'ACTIVE',
+        department: matchedClient.name,
+        password: 'Jshine@2329',
+        createdAt: matchedClient.createdAt || new Date().toISOString(),
+      };
+      if (onProvisionEntityUser) onProvisionEntityUser(newClientUser);
+      return newClientUser;
+    }
+
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const cleanEmail = email.trim().toLowerCase();
-      const matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    try {
+      // 1. Try resolving using current cached users
+      let matchedUser = resolveUserAccount(email);
+
+      // 2. If user not found, query live Firestore cloud data in real-time
+      if (!matchedUser) {
+        try {
+          const freshCloud = await fetchLatestCloudAuthData();
+          if (freshCloud) {
+            if (freshCloud.users) setCloudUsers(freshCloud.users);
+            if (freshCloud.vendors) setCloudVendors(freshCloud.vendors);
+            if (freshCloud.auditors) setCloudAuditors(freshCloud.auditors);
+            if (freshCloud.clients) setCloudClients(freshCloud.clients);
+            if (freshCloud.adminPassword) setCloudAdminPw(freshCloud.adminPassword);
+            matchedUser = resolveUserAccount(email, freshCloud);
+          }
+        } catch (cloudErr) {
+          console.warn('Live cloud credential lookup notice:', cloudErr);
+        }
+      }
 
       if (!matchedUser) {
-        setError('No account registered with this corporate email. Please check your credentials.');
+        setError(
+          'No account found matching this Email, Phone Number, or Partner / Auditor / Client ID. Please verify your credentials or contact administrator.'
+        );
         setIsLoading(false);
         return;
       }
 
       if (matchedUser.status === 'INACTIVE') {
-        setError('Your account has been deactivated by the Super Administrator. Contact jay@jaysoftshine.com.');
+        setError('Your account has been deactivated by the Super Administrator. Please contact corporate support at jay@jaysoftshine.com.');
         setIsLoading(false);
         return;
       }
 
-      // Check password
+      // Check password cleanly and strictly
+      const inputPwd = password.trim();
+      const currentMasterAdminPw = (cloudAdminPw || adminPassword).trim();
+
       if (matchedUser.role === 'SUPER_ADMIN') {
-        if (password !== adminPassword && (!matchedUser.password || password !== matchedUser.password)) {
-          setError('Invalid administrator password. Please check your password or use Forgot Password.');
+        const isAdminMasterValid = inputPwd === currentMasterAdminPw;
+        const isUserPwdValid = matchedUser.password && inputPwd === matchedUser.password.trim();
+        if (!isAdminMasterValid && !isUserPwdValid) {
+          setError('Invalid administrator password. Please check your credentials or reset your password.');
           setIsLoading(false);
           return;
         }
       } else {
-        const expectedPwd = matchedUser.password || 'Jshine@2329';
-        if (password !== expectedPwd && password.trim().length < 4) {
-          setError('Invalid password. Please check your credentials or reset your password.');
+        let expectedPwd = (matchedUser.password || 'Jshine@2329').trim();
+
+        // If local password does not match, double-check latest cloud password in case Admin updated it on another laptop
+        if (inputPwd !== expectedPwd) {
+          try {
+            const freshCloud = await fetchLatestCloudAuthData();
+            if (freshCloud) {
+              const freshMatch = resolveUserAccount(email, freshCloud);
+              if (freshMatch && freshMatch.password) {
+                matchedUser = freshMatch;
+                expectedPwd = freshMatch.password.trim();
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        if (inputPwd !== expectedPwd) {
+          setError('Invalid password. Please check your login credentials or use Forgot Password to reset.');
           setIsLoading(false);
           return;
         }
       }
 
+      // Successful authentication
       setIsLoading(false);
       onLogin(matchedUser);
-    }, 350);
+    } catch (err: any) {
+      setError(err.message || 'Authentication error occurred.');
+      setIsLoading(false);
+    }
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -96,48 +348,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setForgotSuccess(null);
     setForgotLoading(true);
 
-    const cleanEmail = forgotEmail.trim().toLowerCase();
-    const matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail);
+    const matchedUser = resolveUserAccount(forgotEmail);
 
     if (!matchedUser) {
-      setForgotError(`No registered user found with email "${forgotEmail}". Please verify your email.`);
+      setForgotError(`No registered user found for "${forgotEmail}". Please verify your email or account ID.`);
       setForgotLoading(false);
       return;
     }
 
-    // Generate secure temporary password
+    // Generate secure temporary password and reset token
     const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     const newTempPassword = `JSS#${randomSuffix}!${Math.floor(100 + Math.random() * 900)}`;
+    const resetToken = Math.random().toString(36).substring(2, 12);
 
     try {
       if (onResetPassword) {
         onResetPassword(matchedUser.email, newTempPassword);
       }
 
-      // Dispatch real email via Resend
+      // Dispatch email via Google Workspace Gmail
       const dispatchResult = await sendPasswordResetEmail({
         name: matchedUser.name,
         email: matchedUser.email,
         newPassword: newTempPassword,
+        resetToken,
       });
 
       setForgotLoading(false);
       if (dispatchResult.success) {
-        const note = dispatchResult.sandboxDeliveredTo
-          ? ` (Delivered to Resend account mailbox ${dispatchResult.sandboxDeliveredTo})`
-          : '';
+        const note = dispatchResult.senderEmail ? ` from ${dispatchResult.senderEmail}` : '';
         setForgotSuccess(
-          `A new temporary password has been generated and dispatched to your email address: ${matchedUser.email}${note}. You can sign in using this new password immediately.`
+          `Password reset instructions and your temporary credentials have been delivered to your registered email address (${matchedUser.email})${note}. For security compliance, passwords are never shown on screen. Please check your inbox or spam folder.`
         );
       } else {
         setForgotSuccess(
-          `Password reset successful! Your new password is "${newTempPassword}". (Mail gateway notice: ${dispatchResult.error || 'Resend queued'})`
+          `Password reset request recorded for ${matchedUser.email}. Delivery notice: ${dispatchResult.error || 'Dispatched'}. For security, passwords are never displayed on-screen.`
         );
       }
     } catch (err: any) {
       setForgotLoading(false);
       setForgotSuccess(
-        `Password reset successful! Your new password is "${newTempPassword}". Please copy and sign in.`
+        `Password reset instructions have been dispatched to ${matchedUser.email}. For security compliance, credentials are never shown on screen.`
       );
     }
   };
@@ -240,7 +491,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         Reset Account Password
                       </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Enter your registered corporate email to receive your new password via Resend email delivery
+                        Enter your registered corporate email to receive your secure password reset link & credentials via Gmail
                       </p>
                     </div>
                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-700">
@@ -285,7 +536,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         />
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">
-                        A secure temporary password will be dispatched to this inbox via Resend (smtp.resend.com).
+                        A secure reset link and temporary credentials will be dispatched to this inbox via Google Workspace Gmail.
                       </p>
                     </div>
 
@@ -325,6 +576,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
+                  {/* Multi-Device Cloud Sync Banner */}
+                  <div className="mt-3 py-1.5 px-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Cloud Database: Universal Login Active</span>
+                    </span>
+                    <span className="font-mono text-[10px] text-emerald-700 font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-200">
+                      Google Firestore
+                    </span>
+                  </div>
+
                   {/* Error Notice */}
                   {error && (
                     <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2 animate-shake">
@@ -340,19 +602,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   <form onSubmit={handleSubmit} className="mt-5 space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Corporate Email Address
+                        Corporate Email, Mobile Number, or Partner / Auditor / Client ID
                       </label>
                       <div className="relative">
                         <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
-                          type="email"
+                          type="text"
                           required
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          placeholder="Enter your corporate email address"
+                          placeholder="e.g. rahul.auditor@gmail.com, 9820033445, or JSS-AUD-001"
                           className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-900 placeholder:text-slate-400 font-medium"
                         />
                       </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Auditors, Vendors, and Clients can sign in using their registered email, mobile, or assigned Partner ID.
+                      </p>
                     </div>
 
                     <div>
